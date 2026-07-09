@@ -69,6 +69,7 @@ function RightSidebarInner(): React.JSX.Element {
   const setRightSidebarTab = useAppStore((s) => s.setRightSidebarTab)
   const showRightSidebarFiles = useAppStore((s) => s.showRightSidebarFiles)
   const toggleRightSidebar = useAppStore((s) => s.toggleRightSidebar)
+  const rightSidebarPosition = useAppStore((s) => s.rightSidebarPosition)
   const checksStatus = useAppStore((s) => (s.rightSidebarOpen ? getActiveChecksStatus(s) : null))
   const activityBarPosition = useAppStore((s) => s.activityBarPosition)
   const setActivityBarPosition = useAppStore((s) => s.setActivityBarPosition)
@@ -209,7 +210,10 @@ function RightSidebarInner(): React.JSX.Element {
     width: renderedRightSidebarWidth,
     minWidth: RIGHT_SIDEBAR_MIN_WIDTH,
     maxWidth,
-    deltaSign: 1,
+    // Why: when docked 'left', the resize handle sits on the right edge;
+    // dragging right widens the sidebar (deltaSign = 1). When docked 'right',
+    // the handle sits on the left edge; dragging left widens (deltaSign = -1).
+    deltaSign: rightSidebarPosition === 'left' ? 1 : -1,
     renderedExtraWidth: activityBarSideWidth,
     setWidth: setRightSidebarWidth
   })
@@ -414,9 +418,14 @@ function RightSidebarInner(): React.JSX.Element {
 
         {panelContent}
 
-        {/* Resize handle on RIGHT side */}
+        {/* Resize handle — docks to the edge facing the center content.
+            'left' position: handle on right edge (drag right to widen).
+            'right' position: handle on left edge (drag left to widen). */}
         <div
-          className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-ring/20 active:bg-ring/30 transition-colors z-10"
+          className={cn(
+            'absolute top-0 w-1 h-full cursor-col-resize hover:bg-ring/20 active:bg-ring/30 transition-colors z-10',
+            rightSidebarPosition === 'left' ? 'right-0' : 'left-0'
+          )}
           onMouseDown={onResizeStart}
         />
       </div>

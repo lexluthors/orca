@@ -630,6 +630,7 @@ function App(): React.JSX.Element {
   const rightSidebarOpen = useAppStore((s) => s.rightSidebarOpen)
   const rightSidebarTab = useAppStore((s) => s.rightSidebarTab)
   const rightSidebarExplorerView = useAppStore((s) => s.rightSidebarExplorerView)
+  const rightSidebarPosition = useAppStore((s) => s.rightSidebarPosition)
   const isFullScreen = useAppStore((s) => s.isFullScreen)
   const settings = useAppStore((s) => s.settings)
   const systemPrefersDark = useSystemPrefersDark()
@@ -1381,6 +1382,7 @@ function App(): React.JSX.Element {
         rightSidebarTab,
         rightSidebarExplorerView,
         rightSidebarWidth,
+        rightSidebarPosition,
         markdownTocPanelWidth,
         groupBy,
         sortBy,
@@ -1409,6 +1411,7 @@ function App(): React.JSX.Element {
     rightSidebarTab,
     rightSidebarExplorerView,
     rightSidebarWidth,
+    rightSidebarPosition,
     markdownTocPanelWidth,
     groupBy,
     sortBy,
@@ -2108,6 +2111,28 @@ function App(): React.JSX.Element {
     </Tooltip>
   ) : null
 
+  // Why: the right sidebar can dock to either side of the center content.
+  // Extracting the subtree once lets both layout branches share the same
+  // error boundary and reset-key logic.
+  const rightSidebarNode = showRightSidebarControls ? (
+    <RecoverableRenderErrorBoundary
+      boundaryId="right-sidebar"
+      surface="right-sidebar"
+      resetKey={
+        rightSidebarTab === 'explorer'
+          ? `${rightSidebarTab}:${rightSidebarExplorerView}`
+          : rightSidebarTab
+      }
+      title={translate('auto.App.ed6b168d00', 'The right sidebar hit an error.')}
+      description={translate(
+        'auto.App.8d1e160ed1',
+        'Retry the sidebar or switch tabs to reload this surface.'
+      )}
+    >
+      <RightSidebar />
+    </RecoverableRenderErrorBoundary>
+  ) : null
+
   const titlebarMainStrip = (
     <>
       {activeView === 'activity' ? (
@@ -2293,25 +2318,11 @@ function App(): React.JSX.Element {
                     {/* Why: keep the right-sidebar shell mounted for layout stability.
                     Its heavy panels disconnect while closed so workspace wake stays
                     responsive. Unmount on the tasks view since that surface is
-                    intentionally distraction-free. */}
-                    {showRightSidebarControls ? (
-                      <RecoverableRenderErrorBoundary
-                        boundaryId="right-sidebar"
-                        surface="right-sidebar"
-                        resetKey={
-                          rightSidebarTab === 'explorer'
-                            ? `${rightSidebarTab}:${rightSidebarExplorerView}`
-                            : rightSidebarTab
-                        }
-                        title={translate('auto.App.ed6b168d00', 'The right sidebar hit an error.')}
-                        description={translate(
-                          'auto.App.8d1e160ed1',
-                          'Retry the sidebar or switch tabs to reload this surface.'
-                        )}
-                      >
-                        <RightSidebar />
-                      </RecoverableRenderErrorBoundary>
-                    ) : null}
+                    intentionally distraction-free. When rightSidebarPosition is
+                    'left', the sidebar docks between the workspace sidebar and
+                    the center content; when 'right', it docks at the far right
+                    (see the outer flex-row tail). */}
+                    {rightSidebarPosition === 'left' ? rightSidebarNode : null}
                     <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
                       {stackedSidebarOpen ? (
                         <div className="titlebar">{titlebarMainStrip}</div>
@@ -2414,6 +2425,11 @@ function App(): React.JSX.Element {
                     </div>
                   </div>
                 </div>
+                {/* Why: when rightSidebarPosition is 'right', the right sidebar
+                    docks at the far right of the window (restoring the original
+                    layout). See the conditional render inside the inner flex-row
+                    for the 'left' position. */}
+                {rightSidebarPosition === 'right' ? rightSidebarNode : null}
               </div>
             </RecoverableRenderErrorBoundary>
             {shouldMountFloatingTerminalPanel ? (

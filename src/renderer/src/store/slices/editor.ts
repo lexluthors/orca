@@ -435,12 +435,18 @@ export type EditorSlice = {
   rightSidebarRouteRequestId: number
   rightSidebarTabByWorktree: Record<string, ActiveRightSidebarTab>
   rightSidebarExplorerViewByWorktree: Record<string, RightSidebarExplorerView>
+  /** Which side the right sidebar docks to: 'left' places it between the
+   *  workspace sidebar and the center content; 'right' restores the original
+   *  layout with it at the far right edge of the window. */
+  rightSidebarPosition: 'left' | 'right'
   activityBarPosition: ActivityBarPosition
   toggleRightSidebar: () => void
   setRightSidebarOpen: (open: boolean) => void
   setRightSidebarWidth: (width: number) => void
   setRightSidebarTab: (tab: ActiveRightSidebarTab) => void
   setRightSidebarExplorerView: (view: RightSidebarExplorerView) => void
+  toggleRightSidebarPosition: () => void
+  setRightSidebarPosition: (position: 'left' | 'right') => void
   showRightSidebarFiles: () => void
   showRightSidebarSearch: (payload?: {
     query?: string | null
@@ -1444,10 +1450,14 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
   rightSidebarRouteRequestId: 0,
   rightSidebarTabByWorktree: {},
   rightSidebarExplorerViewByWorktree: {},
+  rightSidebarPosition: 'left',
   activityBarPosition: 'top',
   toggleRightSidebar: () => set((s) => ({ rightSidebarOpen: !s.rightSidebarOpen })),
   setRightSidebarOpen: (open) => set({ rightSidebarOpen: open }),
   setRightSidebarWidth: (width) => set({ rightSidebarWidth: width }),
+  toggleRightSidebarPosition: () =>
+    set((s) => ({ rightSidebarPosition: s.rightSidebarPosition === 'left' ? 'right' : 'left' })),
+  setRightSidebarPosition: (position) => set({ rightSidebarPosition: position }),
   setRightSidebarTab: (tab) =>
     set((s) => ({
       rightSidebarTab: tab,

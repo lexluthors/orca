@@ -2305,6 +2305,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
         rightSidebarOpen: typeof ui.rightSidebarOpen === 'boolean' ? ui.rightSidebarOpen : true,
         rightSidebarTab: rightSidebarRoute.rightSidebarTab,
         rightSidebarExplorerView: rightSidebarRoute.rightSidebarExplorerView,
+        rightSidebarPosition: ui.rightSidebarPosition === 'right' ? 'right' : 'left',
         groupBy: (ui.groupBy as UISlice['groupBy'] | 'parent') === 'parent' ? 'repo' : ui.groupBy,
         sortBy,
         // Why: main-process getUI() already normalized this to a valid value

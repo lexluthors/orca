@@ -27,8 +27,10 @@ const MIN_WIDTH = 220
 const MAX_WIDTH = 500
 // Why: straddle the sidebar/terminal seam so the divider sits on the border-l
 // instead of leaving a blank strip between the hover target and the edge.
+// z-50 ensures the handle stays interactive regardless of which neighbors
+// (right sidebar or center column) are adjacent after layout switching.
 export const WORKTREE_SIDEBAR_RESIZE_HANDLE_CLASS_NAME =
-  'group absolute -right-1.5 top-0 z-10 flex h-full w-3 cursor-col-resize items-stretch justify-center'
+  'group absolute -right-1.5 top-0 z-50 flex h-full w-3 cursor-col-resize items-stretch justify-center'
 export const WORKTREE_SIDEBAR_RESIZE_HANDLE_LINE_CLASS_NAME =
   'h-full w-px bg-transparent transition-colors group-hover:bg-ring/50 group-active:bg-ring'
 
@@ -132,63 +134,76 @@ function Sidebar({
 
   return (
     <TooltipProvider delayDuration={400}>
-      <div
-        ref={containerRef}
-        data-native-file-drop-target={sidebarOpen ? nativeDropTarget : undefined}
-        className="relative min-h-0 flex-shrink-0 bg-worktree-sidebar flex flex-col overflow-hidden scrollbar-sleek-parent"
-        style={leftSidebarStyle}
-        {...dropHandlers}
-      >
-        {sidebarOpen && (
-          <>
-            {/* Fixed controls */}
-            <SidebarNav />
-            <SidebarHeader onWorkspaceBoardMenuOpenChange={setWorkspaceBoardMenuOpen} />
+      {/* Why: the resize handle straddles the sidebar/neighbor seam (-6px into
+         the adjacent column) and must escape the sidebar's overflow-hidden to
+         stay interactive. Wrapping in a relative outer div keeps the handle's
+         absolute positioning anchored to the sidebar edge while the inner div
+         owns overflow-hidden for its scrollable content. Same pattern as the
+         dialogs rendered further below. */}
+      <div className="relative min-h-0 flex-shrink-0" style={leftSidebarStyle}>
+        <div
+          ref={containerRef}
+          data-native-file-drop-target={sidebarOpen ? nativeDropTarget : undefined}
+          className="min-h-0 h-full bg-worktree-sidebar flex flex-col overflow-hidden scrollbar-sleek-parent"
+          {...dropHandlers}
+        >
+          {sidebarOpen && (
+            <>
+              {/* Fixed controls */}
+              <SidebarNav />
+              <SidebarHeader onWorkspaceBoardMenuOpenChange={setWorkspaceBoardMenuOpen} />
 
-            <WorktreeList
-              scrollOffsetRef={worktreeScrollOffsetRef}
-              scrollAnchorRef={worktreeScrollAnchorRef}
-              workspaceBoardOpen={workspaceBoardOpen}
-              onWorkspaceBoardDragPreviewStart={previewWorkspaceBoardFromDrag}
-              onWorkspaceBoardDragPreviewCommit={solidifyWorkspaceBoardFromDrag}
-              onWorkspaceBoardDragPreviewCancel={cancelWorkspaceBoardDragPreview}
-            />
+              <WorktreeList
+                scrollOffsetRef={worktreeScrollOffsetRef}
+                scrollAnchorRef={worktreeScrollAnchorRef}
+                workspaceBoardOpen={workspaceBoardOpen}
+                onWorkspaceBoardDragPreviewStart={previewWorkspaceBoardFromDrag}
+                onWorkspaceBoardDragPreviewCommit={solidifyWorkspaceBoardFromDrag}
+                onWorkspaceBoardDragPreviewCancel={cancelWorkspaceBoardDragPreview}
+              />
 
-            <SetupScriptPromptCard />
+              <SetupScriptPromptCard />
 
-            {/* Fixed bottom toolbar */}
-            <SidebarToolbar
-              workspaceBoardOpen={workspaceBoardOpen}
-              workspaceBoardDragPreviewOpen={workspaceBoardDragPreviewOpen}
-              onWorkspaceBoardToggle={toggleWorkspaceBoard}
-            />
-          </>
-        )}
+              {/* Fixed bottom toolbar */}
+              <SidebarToolbar
+                workspaceBoardOpen={workspaceBoardOpen}
+                workspaceBoardDragPreviewOpen={workspaceBoardDragPreviewOpen}
+                onWorkspaceBoardToggle={toggleWorkspaceBoard}
+              />
+            </>
+          )}
 
-        {sidebarOpen && affordance.visible ? (
-          <div
-            className={cn(
-              'pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center gap-1.5 rounded-md border bg-worktree-sidebar-accent/95 px-4 text-center text-worktree-sidebar-accent-foreground shadow-xs',
-              affordance.tone === 'blocked'
-                ? 'border-destructive/70'
-                : 'border-worktree-sidebar-ring/70'
-            )}
-          >
-            {affordance.tone === 'busy' ? (
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
-            ) : (
-              <FolderPlus className="size-5 text-muted-foreground" />
-            )}
-            <div className="text-sm font-medium">{affordance.label}</div>
-            <div className="text-xs text-muted-foreground">{affordance.description}</div>
-          </div>
-        ) : null}
+          {sidebarOpen && affordance.visible ? (
+            <div
+              className={cn(
+                'pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center gap-1.5 rounded-md border bg-worktree-sidebar-accent/95 px-4 text-center text-worktree-sidebar-accent-foreground shadow-xs',
+                affordance.tone === 'blocked'
+                  ? 'border-destructive/70'
+                  : 'border-worktree-sidebar-ring/70'
+              )}
+            >
+              {affordance.tone === 'busy' ? (
+                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              ) : (
+                <FolderPlus className="size-5 text-muted-foreground" />
+              )}
+              <div className="text-sm font-medium">{affordance.label}</div>
+              <div className="text-xs text-muted-foreground">{affordance.description}</div>
+            </div>
+          ) : null}
+        </div>
 
-        {/* Resize handle */}
+        {/* Why: resize handle lives outside the overflow-hidden sidebar root so
+         it can straddle the sidebar/neighbor seam (straddling -6px into the
+         adjacent column) without being clipped. Same pattern as the dialogs
+         below which also escape the sidebar to avoid clipping. */}
         {sidebarOpen && (
           <div
             data-sidebar-resize-handle=""
-            className={cn(WORKTREE_SIDEBAR_RESIZE_HANDLE_CLASS_NAME, isResizing && 'bg-ring/10')}
+            className={cn(
+              'group absolute -right-1.5 top-0 z-50 flex h-full w-3 cursor-col-resize items-stretch justify-center',
+              isResizing && 'bg-ring/10'
+            )}
             onMouseDown={onResizeStart}
           >
             <div
@@ -199,28 +214,28 @@ function Sidebar({
             />
           </div>
         )}
-      </div>
 
-      {/* Dialogs render outside sidebar to avoid clipping. Lazy-load them only
+        {/* Dialogs render outside sidebar to avoid clipping. Lazy-load them only
       for the modal that needs their flow-specific hooks and UI. */}
-      <React.Suspense fallback={null}>
-        {activeModal === 'edit-meta' ? <WorktreeMetaDialog /> : null}
-        {activeModal === 'confirm-remove-folder' ? <RemoveFolderDialog /> : null}
-        {activeModal === 'worktree-visibility' ? <WorktreeVisibilityDialog /> : null}
-        {activeModal === 'confirm-orca-yaml-hooks' ? <OrcaYamlTrustDialog /> : null}
-        {activeModal === 'forget-ssh-workspace' ? <ForgetSshWorkspaceDialog /> : null}
-      </React.Suspense>
-      {sidebarOpen ? (
-        <WorkspaceKanbanDrawer
-          leftSidebarStyle={leftSidebarStyle}
-          open={workspaceBoardRenderedOpen}
-          statusBarVisible={statusBarVisible}
-          dragPreview={workspaceBoardDragPreviewOpen}
-          preserveOpenForMenu={workspaceBoardMenuOpen}
-          onOpenChange={handleWorkspaceBoardOpenChange}
-          onMenuOpenChange={setWorkspaceBoardMenuOpen}
-        />
-      ) : null}
+        <React.Suspense fallback={null}>
+          {activeModal === 'edit-meta' ? <WorktreeMetaDialog /> : null}
+          {activeModal === 'confirm-remove-folder' ? <RemoveFolderDialog /> : null}
+          {activeModal === 'worktree-visibility' ? <WorktreeVisibilityDialog /> : null}
+          {activeModal === 'confirm-orca-yaml-hooks' ? <OrcaYamlTrustDialog /> : null}
+          {activeModal === 'forget-ssh-workspace' ? <ForgetSshWorkspaceDialog /> : null}
+        </React.Suspense>
+        {sidebarOpen ? (
+          <WorkspaceKanbanDrawer
+            leftSidebarStyle={leftSidebarStyle}
+            open={workspaceBoardRenderedOpen}
+            statusBarVisible={statusBarVisible}
+            dragPreview={workspaceBoardDragPreviewOpen}
+            preserveOpenForMenu={workspaceBoardMenuOpen}
+            onOpenChange={handleWorkspaceBoardOpenChange}
+            onMenuOpenChange={setWorkspaceBoardMenuOpen}
+          />
+        ) : null}
+      </div>
     </TooltipProvider>
   )
 }

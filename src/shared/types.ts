@@ -3187,6 +3187,10 @@ export type PersistedUIState = {
   rightSidebarTab: RightSidebarTab
   rightSidebarExplorerView: RightSidebarExplorerView
   rightSidebarWidth: number
+  /** Which side the right sidebar docks to: 'left' places it between the
+   *  workspace sidebar and the center content; 'right' restores the original
+   *  layout with it at the far right. Persists across restarts. */
+  rightSidebarPosition?: 'left' | 'right'
   markdownTocPanelWidth?: number
   groupBy: 'none' | 'workspace-status' | 'repo' | 'pr-status'
   sortBy: 'name' | 'smart' | 'recent' | 'repo' | 'manual'

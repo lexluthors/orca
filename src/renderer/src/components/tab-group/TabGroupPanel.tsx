@@ -1,7 +1,7 @@
 import { Suspense, useMemo } from 'react'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import { useDroppable } from '@dnd-kit/core'
-import { Ellipsis, X } from 'lucide-react'
+import { Ellipsis, PanelLeft, PanelRight, X } from 'lucide-react'
 import { useAppStore } from '../../store'
 import {
   DropdownMenu,
@@ -54,6 +54,8 @@ export default function TabGroupPanel({
   hoveredTabInsertion?: HoveredTabInsertion | null
 }): React.JSX.Element {
   const sidebarOpen = useAppStore((state) => state.sidebarOpen)
+  const rightSidebarPosition = useAppStore((state) => state.rightSidebarPosition)
+  const toggleRightSidebarPosition = useAppStore((state) => state.toggleRightSidebarPosition)
 
   const model = useTabGroupWorkspaceModel({ groupId, worktreeId })
   const { activeTab, browserItems, commands, editorItems, tabBarOrder, terminalTabs } = model
@@ -265,6 +267,45 @@ export default function TabGroupPanel({
             className="ml-1.5 mr-[45px] flex shrink-0 items-center gap-0.5"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
+            {isFocused ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => toggleRightSidebarPosition()}
+                    aria-label={
+                      rightSidebarPosition === 'left'
+                        ? translate(
+                            'auto.components.tab.group.TabGroupPanel.dockRightSidebarRight',
+                            'Dock right sidebar to the right'
+                          )
+                        : translate(
+                            'auto.components.tab.group.TabGroupPanel.dockRightSidebarLeft',
+                            'Dock right sidebar to the left'
+                          )
+                    }
+                    className={menuButtonClassName}
+                  >
+                    {rightSidebarPosition === 'left' ? (
+                      <PanelRight className="size-4" />
+                    ) : (
+                      <PanelLeft className="size-4" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={6}>
+                  {rightSidebarPosition === 'left'
+                    ? translate(
+                        'auto.components.tab.group.TabGroupPanel.dockRightSidebarRight',
+                        'Dock right sidebar to the right'
+                      )
+                    : translate(
+                        'auto.components.tab.group.TabGroupPanel.dockRightSidebarLeft',
+                        'Dock right sidebar to the left'
+                      )}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
             <div className={focusedActionChromeClassName}>
               {isFocused ? (
                 <TabBarQuickCommandsButton worktreeId={worktreeId} groupId={groupId} />
