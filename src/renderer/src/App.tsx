@@ -2258,6 +2258,28 @@ function App(): React.JSX.Element {
                         </RecoverableRenderErrorBoundary>
                       )
                     ) : null}
+                    {/* Why: keep the right-sidebar shell mounted for layout stability.
+                    Its heavy panels disconnect while closed so workspace wake stays
+                    responsive. Unmount on the tasks view since that surface is
+                    intentionally distraction-free. */}
+                    {showRightSidebarControls ? (
+                      <RecoverableRenderErrorBoundary
+                        boundaryId="right-sidebar"
+                        surface="right-sidebar"
+                        resetKey={
+                          rightSidebarTab === 'explorer'
+                            ? `${rightSidebarTab}:${rightSidebarExplorerView}`
+                            : rightSidebarTab
+                        }
+                        title={translate('auto.App.ed6b168d00', 'The right sidebar hit an error.')}
+                        description={translate(
+                          'auto.App.8d1e160ed1',
+                          'Retry the sidebar or switch tabs to reload this surface.'
+                        )}
+                      >
+                        <RightSidebar />
+                      </RecoverableRenderErrorBoundary>
+                    ) : null}
                     <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
                       {stackedSidebarOpen ? (
                         <div className="titlebar">{titlebarMainStrip}</div>
@@ -2363,28 +2385,6 @@ function App(): React.JSX.Element {
                     </div>
                   </div>
                 </div>
-                {/* Why: keep the right-sidebar shell mounted for layout stability.
-              Its heavy panels disconnect while closed so workspace wake stays
-              responsive. Unmount on the tasks view since that surface is
-              intentionally distraction-free. */}
-                {showRightSidebarControls ? (
-                  <RecoverableRenderErrorBoundary
-                    boundaryId="right-sidebar"
-                    surface="right-sidebar"
-                    resetKey={
-                      rightSidebarTab === 'explorer'
-                        ? `${rightSidebarTab}:${rightSidebarExplorerView}`
-                        : rightSidebarTab
-                    }
-                    title={translate('auto.App.ed6b168d00', 'The right sidebar hit an error.')}
-                    description={translate(
-                      'auto.App.8d1e160ed1',
-                      'Retry the sidebar or switch tabs to reload this surface.'
-                    )}
-                  >
-                    <RightSidebar />
-                  </RecoverableRenderErrorBoundary>
-                ) : null}
               </div>
             </RecoverableRenderErrorBoundary>
             {shouldMountFloatingTerminalPanel ? (

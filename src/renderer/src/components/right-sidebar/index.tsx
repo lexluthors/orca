@@ -209,7 +209,7 @@ function RightSidebarInner(): React.JSX.Element {
     width: renderedRightSidebarWidth,
     minWidth: RIGHT_SIDEBAR_MIN_WIDTH,
     maxWidth,
-    deltaSign: -1,
+    deltaSign: 1,
     renderedExtraWidth: activityBarSideWidth,
     setWidth: setRightSidebarWidth
   })
@@ -296,7 +296,7 @@ function RightSidebarInner(): React.JSX.Element {
         {activityBarPosition === 'top' ? (
           /* ── Top activity bar: horizontal icon row ── */
           <ContextMenu>
-            <div className="flex h-[36px] min-h-[36px] items-center border-b border-border right-sidebar-header-inset right-sidebar-header-drag overflow-hidden">
+            <div className="flex h-[36px] min-h-[36px] items-center border-b border-border right-sidebar-header-drag overflow-hidden">
               {!hasDesktopWindowChrome && (
                 <TooltipProvider delayDuration={400}>
                   <ContextMenuTrigger asChild>
@@ -402,13 +402,7 @@ function RightSidebarInner(): React.JSX.Element {
           </ContextMenu>
         ) : (
           /* ── Side layout: static title header ── */
-          /* Why: the 40px side activity bar absorbs the rightmost 40px of the
-             138px window-controls overlay when custom desktop chrome is active,
-             but the remaining 98px still overlaps the panel header.
-             right-sidebar-header-side-inset applies exactly that remainder
-             (138-40=98px) as padding-right so the close button clears the
-             minimize button without the full 138px gap. */
-          <div className="flex items-center justify-between h-[36px] min-h-[36px] px-3 border-b border-border right-sidebar-header-side-inset right-sidebar-header-drag">
+          <div className="flex items-center justify-between h-[36px] min-h-[36px] px-3 border-b border-border right-sidebar-header-drag">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">
               {visibleItems.find((item) => item.id === effectiveTab)?.title ?? ''}
             </span>
@@ -420,9 +414,9 @@ function RightSidebarInner(): React.JSX.Element {
 
         {panelContent}
 
-        {/* Resize handle on LEFT side */}
+        {/* Resize handle on RIGHT side */}
         <div
-          className="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-ring/20 active:bg-ring/30 transition-colors z-10"
+          className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-ring/20 active:bg-ring/30 transition-colors z-10"
           onMouseDown={onResizeStart}
         />
       </div>
@@ -431,7 +425,7 @@ function RightSidebarInner(): React.JSX.Element {
       {activityBarPosition === 'side' && (
         <ContextMenu>
           <ContextMenuTrigger asChild>
-            <div className="flex flex-col items-center w-10 min-w-[40px] bg-sidebar border-l border-border side-activity-bar-windows-inset">
+            <div className="flex flex-col items-center w-10 min-w-[40px] bg-sidebar border-l border-border">
               <TooltipProvider delayDuration={400}>{sideActivityBarIcons}</TooltipProvider>
             </div>
           </ContextMenuTrigger>
