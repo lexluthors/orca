@@ -53,7 +53,6 @@ export default function TabGroupPanel({
   isTabDragActive?: boolean
   hoveredTabInsertion?: HoveredTabInsertion | null
 }): React.JSX.Element {
-  const rightSidebarOpen = useAppStore((state) => state.rightSidebarOpen)
   const sidebarOpen = useAppStore((state) => state.sidebarOpen)
 
   const model = useTabGroupWorkspaceModel({ groupId, worktreeId })
@@ -263,7 +262,7 @@ export default function TabGroupPanel({
           ) : null}
           <div className="min-w-0 flex-1 h-full">{tabBar}</div>
           <div
-            className="ml-1.5 flex shrink-0 items-center gap-0.5"
+            className="ml-1.5 mr-[45px] flex shrink-0 items-center gap-0.5"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
             <div className={focusedActionChromeClassName}>
@@ -315,20 +314,18 @@ export default function TabGroupPanel({
               ) : null}
             </div>
           </div>
-          {/* Why: Electron's native drag hit-test ignores z-index — a no-drag
-              element only overrides drag when it's a DOM descendant, not a
-              sibling in another branch. The floating right-sidebar toggle and
-              the fixed-position window-controls overlay for custom desktop
-              chrome both sit in separate DOM trees, so we need an explicit
-              no-drag child here to punch holes in the drag surface beneath
-              them. The sidebar toggle is 40px (w-10); window controls add
-              --window-controls-width (138px when active, 0px otherwise) on top. */}
-          {reserveClosedExplorerToggleSpace && !rightSidebarOpen ? (
+          {/* Why: reserve space for the fixed-position window-controls overlay
+              on custom desktop chrome. The floating right-sidebar toggle no
+              longer sits in this corner (it's now inside the center column
+              after the right-sidebar move), but window-controls still need
+              138px of clearance so tab-strip action buttons like the quick-
+              command runner are not obscured. */}
+          {reserveClosedExplorerToggleSpace ? (
             <div
               className="shrink-0"
               style={
                 {
-                  width: 'calc(40px + var(--window-controls-width, 0px))',
+                  width: 'var(--window-controls-width, 0px)',
                   WebkitAppRegion: 'no-drag'
                 } as React.CSSProperties
               }

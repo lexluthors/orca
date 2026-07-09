@@ -2328,14 +2328,11 @@ function App(): React.JSX.Element {
                             className="absolute top-0 z-10 flex items-center h-[36px]"
                             style={
                               {
-                                // Why: right: var(--window-controls-width) is the single
-                                // mechanism that keeps the toggle clear of the
-                                // fixed-position window-controls overlay on custom desktop
-                                // chrome (138px) and sits at the right edge otherwise (0px).
-                                // No internal spacer needed — adding one would push the button
-                                // a further 138px to the left and cover the pane-actions
-                                // Ellipsis button with an un-clickable div.
-                                right: 'var(--window-controls-width)',
+                                // Why: right: calc(var(--window-controls-width) + 8px) keeps the
+                                // toggle clear of the fixed-position window-controls overlay on
+                                // custom desktop chrome (138px + 8px buffer) and sits 8px from
+                                // the right edge otherwise.
+                                right: 'calc(var(--window-controls-width) + 8px)',
                                 WebkitAppRegion: 'no-drag'
                               } as React.CSSProperties
                             }
