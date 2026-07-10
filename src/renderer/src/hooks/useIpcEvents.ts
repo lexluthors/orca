@@ -9,12 +9,10 @@ import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { buildLinearIssueLinkedWorkItem } from '@/lib/linear-linked-work-item'
 import { runWorktreeDelete } from '@/components/sidebar/delete-worktree-flow'
 import { runSleepWorktree } from '@/components/sidebar/sleep-worktree-flow'
+import { createBackgroundSleepingAgentWakeDispatcher } from '@/lib/wake-sleeping-agents-in-background'
 import { OPEN_WORKSPACE_BOARD_EVENT } from '@/components/sidebar/useWorkspaceBoardPanel'
-import {
-  BACKGROUND_MOUNT_TERMINAL_WORKTREE_EVENT,
-  SPLIT_TERMINAL_PANE_EVENT,
-  CLOSE_TERMINAL_PANE_EVENT
-} from '@/constants/terminal'
+import { SPLIT_TERMINAL_PANE_EVENT, CLOSE_TERMINAL_PANE_EVENT } from '@/constants/terminal'
+import { requestBackgroundTerminalWorktreeMount } from '@/components/terminal/background-terminal-worktree-mount'
 import type { SplitTerminalPaneDetail, CloseTerminalPaneDetail } from '@/constants/terminal'
 import { getVisibleWorktreeIds } from '@/components/sidebar/visible-worktrees'
 import { activateTabNumberShortcut } from '@/lib/tab-number-shortcuts'
@@ -31,6 +29,7 @@ import type {
 } from '../../../shared/remote-workspace-types'
 import type { RateLimitState } from '../../../shared/rate-limit-types'
 import type { SshConnectionState } from '../../../shared/ssh-types'
+import { isWslHookRelayConnectionId } from '../../../shared/wsl-hook-relay-contract'
 import type {
   RuntimeBrowserDriverState,
   RuntimeTerminalPresentation,
@@ -206,11 +205,7 @@ function acquireBrowserAutomationBootstrapLease(
   if (!targetWorktreeId) {
     return
   }
-  window.dispatchEvent(
-    new CustomEvent(BACKGROUND_MOUNT_TERMINAL_WORKTREE_EVENT, {
-      detail: { worktreeId: targetWorktreeId }
-    })
-  )
+  requestBackgroundTerminalWorktreeMount({ worktreeId: targetWorktreeId })
   let targetBrowserPageId = browserPageId ?? null
   if (!targetBrowserPageId) {
     const browserTabs = store.browserTabsByWorktree[targetWorktreeId] ?? []
@@ -835,6 +830,8 @@ function getWorktreeRuntimeEnvironmentId(worktreeId: string | null | undefined):
 export function useIpcEvents(): void {
   useEffect(() => {
     const unsubs: (() => void)[] = []
+    const backgroundSleepingAgentWakeDispatcher = createBackgroundSleepingAgentWakeDispatcher()
+    unsubs.push(backgroundSleepingAgentWakeDispatcher.dispose)
     type PendingAgentStatusEvent = {
       data: AgentStatusIpcPayload
       firstSeenAt: number
@@ -1032,6 +1029,12 @@ export function useIpcEvents(): void {
       getDesiredEnvironmentIds: getRuntimeClientEventEnvironmentIds,
       subscribe: (environmentId, onEvent, onError) =>
         subscribeRuntimeClientEvents(environmentId, onEvent, onError, () => {
+          // Why: worktreesChanged/reposChanged during the transport gap are
+          // lost, not queued. A quick drop can replay without ever flipping the
+          // env unreachable, so the reachability-transition refetch never runs
+          // and a server-created worktree stays invisible until relaunch
+          // (#7970). The scheduler debounces, so this stays cheap.
+          runtimeProjectRefreshScheduler.request(environmentId)
           if (isPairedWebClientWindow()) {
             return
           }
@@ -1657,14 +1660,6 @@ export function useIpcEvents(): void {
           const shouldSurfaceOwner = terminalPresentation !== 'background'
           if (shouldActivate) {
             activateTerminalInitiatedWorktree(store, worktreeId)
-          } else {
-            // Why: renderer-backed Codex startup must mount a TerminalPane so the
-            // PTY is born in the renderer, but it must not switch the active UI.
-            window.dispatchEvent(
-              new CustomEvent(BACKGROUND_MOUNT_TERMINAL_WORKTREE_EVENT, {
-                detail: { worktreeId }
-              })
-            )
           }
           const tabOptions = data.launchAgent
             ? {
@@ -1685,6 +1680,11 @@ export function useIpcEvents(): void {
                   ...(data.cwd ? { startupCwd: data.cwd } : {})
                 }
           const tab = store.createTab(worktreeId, data.targetGroupId, undefined, tabOptions)
+          if (!shouldActivate) {
+            // Why: renderer-backed Codex startup must mount its new TerminalPane
+            // without switching UI or connecting every saved tab in the worktree.
+            requestBackgroundTerminalWorktreeMount({ worktreeId, tabIds: [tab.id] })
+          }
           if (data.afterTabId) {
             const createdUnifiedTab = useAppStore
               .getState()
@@ -1939,6 +1939,14 @@ export function useIpcEvents(): void {
     unsubs.push(
       window.api.ui.onSleepWorktree(({ worktreeId }) => {
         void runSleepWorktree(worktreeId)
+      })
+    )
+
+    unsubs.push(
+      window.api.ui.onResumeSleepingAgents(({ worktreeId }) => {
+        // Why: a phone opened this worktree; wake its slept agents on the host
+        // renderer navigation-free (no desktop worktree/tab/view change).
+        backgroundSleepingAgentWakeDispatcher.request(worktreeId)
       })
     )
 
@@ -2984,15 +2992,23 @@ export function useIpcEvents(): void {
       // matches that tab's worktree, accept the status until repo ownership
       // becomes available; once ownership is resolved, keep the strict
       // connectionId check below.
+      // Why: the WSL hook relay stamps a transport-provenance connectionId
+      // (`wsl:<distro>`), but the pane is a LOCAL pane on a local repo —
+      // ownership-wise it is null. Without this normalization the strict
+      // check below drops every WSL-relayed status for a local repo (while
+      // still rejecting WSL-stamped events against SSH-owned repos).
+      const ownershipConnectionId = isWslHookRelayConnectionId(data.connectionId)
+        ? null
+        : data.connectionId
       const canAcceptPendingRemoteOwnership =
-        data.connectionId !== undefined &&
-        data.connectionId !== null &&
+        ownershipConnectionId !== undefined &&
+        ownershipConnectionId !== null &&
         !repoConnectionResolved &&
         data.worktreeId !== undefined &&
         data.worktreeId === owningWorktreeId
       if (
-        data.connectionId !== undefined &&
-        data.connectionId !== repoConnectionId &&
+        ownershipConnectionId !== undefined &&
+        ownershipConnectionId !== repoConnectionId &&
         !canAcceptPendingRemoteOwnership
       ) {
         return 'dropped'

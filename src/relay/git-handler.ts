@@ -52,7 +52,7 @@ import {
   resolveEffectiveGitUpstream
 } from '../shared/git-effective-upstream'
 import { loadGitHistoryFromExecutor } from '../shared/git-history'
-import { buildRelayCommandEnv } from './relay-command-env'
+import { buildRelayGitEnv } from './relay-command-env'
 import {
   removeSafeUntrackedDiscardTarget,
   removeSafeUntrackedDiscardTargets
@@ -60,6 +60,7 @@ import {
 import { getGitCloneFailureMessage } from '../shared/git-clone-failure-message'
 import { syncForkDefaultBranch, validateGitForkSyncExpectedUpstream } from '../shared/git-fork-sync'
 import { InFlightPromiseDedupe, stableInFlightKey } from '../shared/in-flight-promise-dedupe'
+import { GIT_FETCH_SKIP_AUTO_MAINTENANCE_CONFIG_ARGS } from '../shared/git-fetch-auto-maintenance'
 
 const execFileAsync = promisify(execFile)
 const MAX_GIT_BUFFER = 10 * 1024 * 1024
@@ -216,7 +217,7 @@ export class GitHandler {
     this.dispatcher.onRequest('git.rebaseFromBase', (p) => this.rebaseFromBase(p))
     this.dispatcher.onRequest('git.branchDiff', (p) => this.branchDiff(p))
     this.dispatcher.onRequest('git.commitDiff', (p) => this.commitDiff(p))
-    this.dispatcher.onRequest('git.listWorktrees', (p) => this.listWorktrees(p))
+    this.dispatcher.onRequest('git.listWorktrees', (p, context) => this.listWorktrees(p, context))
     this.dispatcher.onRequest('git.addWorktree', (p) => this.addWorktree(p))
     this.dispatcher.onRequest('git.removeWorktree', (p) => this.removeWorktree(p))
     this.dispatcher.onRequest('git.worktreeIsClean', (p) => this.worktreeIsClean(p))
@@ -254,7 +255,7 @@ export class GitHandler {
       stdin?: string
     }
   ): Promise<{ stdout: string; stderr: string }> {
-    const env = buildRelayCommandEnv()
+    const env = buildRelayGitEnv()
     if (opts?.disableOptionalLocks) {
       env.GIT_OPTIONAL_LOCKS = '0'
     }
@@ -281,7 +282,7 @@ export class GitHandler {
   private async gitBuffer(args: string[], cwd: string): Promise<Buffer> {
     const { stdout } = (await execFileAsync('git', args, {
       cwd,
-      env: buildRelayCommandEnv(),
+      env: buildRelayGitEnv(),
       encoding: 'buffer',
       maxBuffer: MAX_GIT_BUFFER
     })) as { stdout: Buffer }
@@ -844,9 +845,13 @@ export class GitHandler {
     const remote = params.remote
     const branch = params.branch
     const ref = params.ref
+    const skipAutoMaintenance = params.skipAutoMaintenance
     try {
       if (typeof remote !== 'string' || typeof branch !== 'string' || typeof ref !== 'string') {
         throw new Error('Invalid remote-tracking fetch request.')
+      }
+      if (skipAutoMaintenance !== undefined && typeof skipAutoMaintenance !== 'boolean') {
+        throw new Error('Invalid remote-tracking fetch maintenance option.')
       }
       if (remote.startsWith('-') || branch.startsWith('-')) {
         throw new Error('Remote-tracking fetch inputs must not start with "-".')
@@ -866,7 +871,16 @@ export class GitHandler {
         }
         await this.git(['check-ref-format', `refs/heads/${branch}`], worktreePath)
         await this.git(['check-ref-format', ref], worktreePath)
-        await this.git(['fetch', '--no-tags', remote, `+refs/heads/${branch}:${ref}`], worktreePath)
+        await this.git(
+          [
+            ...(skipAutoMaintenance ? GIT_FETCH_SKIP_AUTO_MAINTENANCE_CONFIG_ARGS : []),
+            'fetch',
+            '--no-tags',
+            remote,
+            `+refs/heads/${branch}:${ref}`
+          ],
+          worktreePath
+        )
       } catch (error) {
         // Why: create-worktree needs a write-capable fetch, but generic git.exec
         // intentionally rejects fetch. This narrow RPC keeps the relay allowlist
@@ -1097,7 +1111,7 @@ export class GitHandler {
     return await new Promise((resolve, reject) => {
       const child = spawn('git', args, {
         cwd: expandTilde(cwd),
-        env: buildRelayCommandEnv(),
+        env: buildRelayGitEnv(),
         stdio: ['ignore', 'pipe', 'pipe']
       })
       let stdout = ''
@@ -1263,10 +1277,12 @@ export class GitHandler {
     return normalized
   }
 
-  private async listWorktrees(params: Record<string, unknown>) {
+  private async listWorktrees(params: Record<string, unknown>, context?: RequestContext) {
     const repoPath = params.repoPath as string
     try {
-      const { stdout } = await this.git(['worktree', 'list', '--porcelain', '-z'], repoPath)
+      const { stdout } = await this.git(['worktree', 'list', '--porcelain', '-z'], repoPath, {
+        signal: context?.signal
+      })
       return this.normalizeMainWorktreePath(
         repoPath,
         parseWorktreeList(stdout, { nulDelimited: true })
@@ -1280,7 +1296,9 @@ export class GitHandler {
     // Why: `-z` keeps newline-containing SSH worktree paths intact, but older
     // Git rejects it. Fall back to the original line-block parser there.
     try {
-      const { stdout } = await this.git(['worktree', 'list', '--porcelain'], repoPath)
+      const { stdout } = await this.git(['worktree', 'list', '--porcelain'], repoPath, {
+        signal: context?.signal
+      })
       return this.normalizeMainWorktreePath(repoPath, parseWorktreeList(stdout))
     } catch {
       return []

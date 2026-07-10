@@ -39,6 +39,7 @@ import type {
 } from '../shared/orca-profiles'
 import type { TerminalPaneSplitSource } from '../shared/feature-education-telemetry'
 import type { TaskSourceContext } from '../shared/task-source-context'
+import type { LinearIssueAttributeFilter } from '../shared/linear-issue-attribute-filter'
 import type { ProjectExecutionRuntimeResolution } from '../shared/project-execution-runtime'
 import type { StartupCommandDelivery } from '../shared/codex-startup-delivery'
 import type { SleepingAgentLaunchConfig } from '../shared/agent-session-resume'
@@ -351,6 +352,7 @@ import type {
 } from '../shared/claude-usage-types'
 import type {
   CodexRateLimitResetResult,
+  GrokAccountStatus,
   RateLimitRuntimeTarget,
   RateLimitState
 } from '../shared/rate-limit-types'
@@ -401,7 +403,12 @@ import type {
   OpenCodeUsageSnapshot,
   OpenCodeUsageSummary
 } from '../shared/opencode-usage-types'
-import type { AiVaultListArgs, AiVaultListResult } from '../shared/ai-vault-types'
+import type {
+  AiVaultListArgs,
+  AiVaultListResult,
+  AiVaultSubagentListArgs,
+  AiVaultSubagentListResult
+} from '../shared/ai-vault-types'
 import type { AgentType, NativeChatMessage } from '../shared/native-chat-types'
 import type { TelemetryConsentState } from '../shared/telemetry-consent-types'
 import type { AgentKind, LaunchSource, RequestKind } from '../shared/telemetry-events'
@@ -779,6 +786,8 @@ export type OpenCodeUsageApi = {
 
 export type AiVaultApi = {
   listSessions: (args?: AiVaultListArgs) => Promise<AiVaultListResult>
+  /** Lists the Task subagent transcripts of one session, on demand. */
+  listSubagentSessions: (args: AiVaultSubagentListArgs) => Promise<AiVaultSubagentListResult>
   /** Fires when any app window regains OS focus; returns an unsubscribe. */
   onWindowFocused: (callback: () => void) => () => void
 }
@@ -1776,6 +1785,7 @@ export type PreloadApi = {
       filter?: 'assigned' | 'created' | 'all' | 'completed'
       limit?: number
       workspaceId?: LinearWorkspaceSelection
+      attributeFilter?: LinearIssueAttributeFilter
     }) => Promise<LinearCollectionResult<LinearIssue>>
     createIssue: (args: {
       teamId: string
@@ -2750,6 +2760,7 @@ export type PreloadApi = {
       callback: (data: { tabId: string; paneRuntimeId?: number }) => void
     ) => () => void
     onSleepWorktree: (callback: (data: { worktreeId: string }) => void) => () => void
+    onResumeSleepingAgents: (callback: (data: { worktreeId: string }) => void) => () => void
     onTerminalZoom: (callback: (direction: 'in' | 'out' | 'reset') => void) => () => void
     onSystemResumed: (callback: () => void) => () => void
     readClipboardText: (options?: ReadClipboardTextOptions) => Promise<string>
@@ -2873,12 +2884,16 @@ export type PreloadApi = {
     fetchInactiveClaudeAccounts: () => Promise<void>
     fetchInactiveCodexAccounts: () => Promise<void>
     refreshMiniMax: () => Promise<RateLimitState>
+    refreshGrok: () => Promise<RateLimitState>
     onUpdate: (callback: (state: RateLimitState) => void) => () => void
   }
   minimaxCredentials: {
     getStatus: () => Promise<{ configured: boolean }>
     saveCookie: (cookie: string) => Promise<{ configured: boolean }>
     clearCookie: () => Promise<{ configured: boolean }>
+  }
+  grokAccounts: {
+    getStatus: () => Promise<GrokAccountStatus>
   }
   ssh: {
     listTargets: () => Promise<SshTarget[]>

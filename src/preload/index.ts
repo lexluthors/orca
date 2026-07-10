@@ -79,6 +79,7 @@ import type {
 } from '../shared/mobile-markdown-document'
 import type {
   CodexRateLimitResetResult,
+  GrokAccountStatus,
   RateLimitRuntimeTarget,
   RateLimitState
 } from '../shared/rate-limit-types'
@@ -156,7 +157,7 @@ import type {
   AutomationUpdateInput
 } from '../shared/automations-types'
 import type { KeybindingActionId, KeybindingFileSnapshot } from '../shared/keybindings'
-import type { AiVaultListArgs } from '../shared/ai-vault-types'
+import type { AiVaultListArgs, AiVaultSubagentListArgs } from '../shared/ai-vault-types'
 import type { AgentType } from '../shared/native-chat-types'
 import type {
   NativeChatAppendedMessages,
@@ -1462,6 +1463,7 @@ const api = {
       filter?: 'assigned' | 'created' | 'all' | 'completed'
       limit?: number
       workspaceId?: string
+      attributeFilter?: unknown
     }): Promise<unknown> => ipcRenderer.invoke('linear:listIssues', args),
 
     createIssue: (args: {
@@ -3478,6 +3480,12 @@ const api = {
       ipcRenderer.on('ui:sleepWorktree', listener)
       return () => ipcRenderer.removeListener('ui:sleepWorktree', listener)
     },
+    onResumeSleepingAgents: (callback: (data: { worktreeId: string }) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: { worktreeId: string }) =>
+        callback(data)
+      ipcRenderer.on('ui:resumeSleepingAgents', listener)
+      return () => ipcRenderer.removeListener('ui:resumeSleepingAgents', listener)
+    },
     onTerminalZoom: (callback: (direction: 'in' | 'out' | 'reset') => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, direction: 'in' | 'out' | 'reset') =>
         callback(direction)
@@ -3674,6 +3682,8 @@ const api = {
   aiVault: {
     listSessions: (args?: AiVaultListArgs): Promise<unknown> =>
       ipcRenderer.invoke('aiVault:listSessions', args),
+    listSubagentSessions: (args: AiVaultSubagentListArgs): Promise<unknown> =>
+      ipcRenderer.invoke('aiVault:listSubagentSessions', args),
     onWindowFocused: (callback: () => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent) => callback()
       ipcRenderer.on('aiVault:windowFocused', listener)
@@ -3844,6 +3854,7 @@ const api = {
     fetchInactiveCodexAccounts: (): Promise<void> =>
       ipcRenderer.invoke('rateLimits:fetchInactiveCodexAccounts'),
     refreshMiniMax: (): Promise<RateLimitState> => ipcRenderer.invoke('rateLimits:refreshMiniMax'),
+    refreshGrok: (): Promise<RateLimitState> => ipcRenderer.invoke('rateLimits:refreshGrok'),
     onUpdate: (callback: (state: RateLimitState) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, state: RateLimitState) => callback(state)
       ipcRenderer.on('rateLimits:update', listener)
@@ -3858,6 +3869,10 @@ const api = {
       ipcRenderer.invoke('minimaxCredentials:saveCookie', cookie),
     clearCookie: (): Promise<{ configured: boolean }> =>
       ipcRenderer.invoke('minimaxCredentials:clearCookie')
+  },
+
+  grokAccounts: {
+    getStatus: (): Promise<GrokAccountStatus> => ipcRenderer.invoke('grokAccounts:getStatus')
   },
 
   ssh: {
