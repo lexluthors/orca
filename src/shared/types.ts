@@ -3000,7 +3000,11 @@ export type GhosttyImportPreview = {
 // schema-vs-renderer enum sync guard.
 export type DiscoveryStatusEmitted = 'found' | 'absent' | 'imported'
 
-export type NotificationEventSource = 'agent-task-complete' | 'terminal-bell' | 'test'
+export type NotificationEventSource =
+  | 'agent-task-complete'
+  | 'terminal-bell'
+  | 'todo-due'
+  | 'test'
 
 export type NotificationDispatchRequest = {
   source: NotificationEventSource
@@ -3022,6 +3026,10 @@ export type NotificationDispatchRequest = {
   agentToolInput?: string
   agentLastAssistantMessage?: string
   agentInterrupted?: boolean
+  /** Custom title for generic sources (e.g. todo-due). */
+  title?: string
+  /** Custom body for generic sources (e.g. todo-due). */
+  body?: string
 }
 
 export type NotificationDispatchResult = {

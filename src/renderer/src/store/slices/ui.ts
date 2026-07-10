@@ -592,6 +592,16 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'work'
+  previousViewBeforeWork:
+    | 'terminal'
+    | 'settings'
+    | 'tasks'
+    | 'activity'
+    | 'automations'
+    | 'space'
+    | 'skills'
+    | 'mobile'
   previousViewBeforeTasks:
     | 'terminal'
     | 'settings'
@@ -600,6 +610,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'work'
   previousViewBeforeSettings:
     | 'terminal'
     | 'tasks'
@@ -608,6 +619,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'work'
   previousViewBeforeActivity:
     | 'terminal'
     | 'settings'
@@ -616,6 +628,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'work'
   previousViewBeforeAutomations:
     | 'terminal'
     | 'settings'
@@ -624,6 +637,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'work'
   previousViewBeforeSpace:
     | 'terminal'
     | 'settings'
@@ -632,6 +646,7 @@ export type UISlice = {
     | 'automations'
     | 'skills'
     | 'mobile'
+    | 'work'
   previousViewBeforeSkills:
     | 'terminal'
     | 'settings'
@@ -640,6 +655,7 @@ export type UISlice = {
     | 'automations'
     | 'space'
     | 'mobile'
+    | 'work'
   previousViewBeforeMobile:
     | 'terminal'
     | 'settings'
@@ -648,6 +664,7 @@ export type UISlice = {
     | 'automations'
     | 'space'
     | 'skills'
+    | 'work'
   setActiveView: (view: UISlice['activeView']) => void
   taskPageData: {
     preselectedRepoId?: string
@@ -728,6 +745,8 @@ export type UISlice = {
   closeSkillsPage: () => void
   openMobilePage: () => void
   closeMobilePage: () => void
+  openWorkPage: () => void
+  closeWorkPage: () => void
   setNewWorkspaceDraft: (draft: NonNullable<UISlice['newWorkspaceDraft']>) => void
   clearNewWorkspaceDraft: () => void
   openSettingsPage: () => void
@@ -1169,6 +1188,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
     }),
 
   activeView: 'terminal',
+  previousViewBeforeWork: 'terminal',
   previousViewBeforeTasks: 'terminal',
   previousViewBeforeSettings: 'terminal',
   previousViewBeforeActivity: 'terminal',
@@ -1452,6 +1472,16 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   closeMobilePage: () =>
     set((state) => ({
       activeView: state.previousViewBeforeMobile
+    })),
+  openWorkPage: () =>
+    set((state) => ({
+      activeView: 'work',
+      previousViewBeforeWork:
+        state.activeView === 'work' ? state.previousViewBeforeWork : state.activeView
+    })),
+  closeWorkPage: () =>
+    set((state) => ({
+      activeView: state.previousViewBeforeWork
     })),
   setNewWorkspaceDraft: (draft) => set({ newWorkspaceDraft: draft }),
   clearNewWorkspaceDraft: () => set({ newWorkspaceDraft: null }),
@@ -2282,7 +2312,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
         ui.rightSidebarTab,
         ui.rightSidebarExplorerView
       )
-      const hydrated = {
+      const hydrated: Partial<AppState> = {
         // Why: persisted UI data comes from disk and may be stale, corrupted,
         // or manually edited. Clamp widths during hydration so invalid values
         // cannot push the renderer into broken layouts before the user drags a

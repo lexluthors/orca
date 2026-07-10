@@ -40,6 +40,13 @@ export function buildNotificationOptions(args: NotificationDispatchRequest): {
     }
   }
 
+  if (args.source === 'todo-due') {
+    return {
+      title: args.title ?? 'Todo Reminder',
+      body: args.body ?? 'A todo item is due soon.'
+    }
+  }
+
   const richOptions = buildAgentTaskCompleteNotificationOptions(args)
   if (richOptions) {
     return richOptions
