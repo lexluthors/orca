@@ -507,7 +507,8 @@ const TOP_LEVEL_VIEW_LOOKUP: Record<TopLevelView, true> = {
   automations: true,
   space: true,
   skills: true,
-  mobile: true
+  mobile: true,
+  work: true
 }
 const KNOWN_TOP_LEVEL_VIEWS = new Set<string>(Object.keys(TOP_LEVEL_VIEW_LOOKUP))
 
@@ -622,16 +623,7 @@ export type UISlice = {
   acknowledgedAgentsByPaneKey: Record<string, number>
   acknowledgeAgents: (paneKeys: string[]) => void
   unacknowledgeAgents: (paneKeys: string[]) => void
-  activeView:
-    | 'terminal'
-    | 'settings'
-    | 'tasks'
-    | 'activity'
-    | 'automations'
-    | 'space'
-    | 'skills'
-    | 'mobile'
-    | 'work'
+  activeView: TopLevelView
   previousViewBeforeWork:
     | 'terminal'
     | 'settings'
@@ -641,7 +633,6 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
-  activeView: TopLevelView
   previousViewBeforeTasks:
     | 'terminal'
     | 'settings'
