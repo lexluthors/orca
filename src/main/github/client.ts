@@ -79,6 +79,7 @@ import {
   rememberGhCwdResolutionFailure
 } from './gh-cwd-repo-negative-cache'
 import type { GitHubRepoContext } from './github-repository-identity'
+import { getEnterpriseGitHubRepoSlug } from './github-enterprise-repository'
 export { _resetOwnerRepoCache } from './gh-utils'
 export {
   getIssue,
@@ -1750,16 +1751,29 @@ function parseCreatePRPayload(stdout: string): { number: number; url: string } |
   } catch {
     // Fall through to URL parsing for older gh versions without --json support.
   }
-  const urlMatch = trimmed.match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)/)
+  // Why: gh prints the PR URL (not JSON) here; match any host, not just
+  // github.com, so a GitHub Enterprise Server URL still parses directly (#8312).
+  const urlMatch = trimmed.match(/https?:\/\/[^\s/]+\/[^\s/]+\/[^\s/]+\/pull\/(\d+)/)
   if (!urlMatch) {
     return null
   }
   return { number: Number(urlMatch[1]), url: urlMatch[0] }
 }
 
+// Why: `gh --repo OWNER/REPO` resolves the shorthand against gh's default host
+// (usually github.com), not the repo's remote — so a GHES repo would target a
+// same-named github.com repo, or fail. Qualify with the host for GHES so gh hits
+// the Enterprise server; this is the only host signal for SSH repos, which run
+// gh with no cwd context (#8312). github.com keeps the bare shorthand.
+function ghRepoArg(slug: { owner: string; repo: string; host?: string }): string {
+  return slug.host && slug.host.toLowerCase() !== 'github.com'
+    ? `${slug.host}/${slug.owner}/${slug.repo}`
+    : `${slug.owner}/${slug.repo}`
+}
+
 async function findOpenPRByHeadBase(args: {
   repoPath: string
-  ownerRepo: OwnerRepo
+  repoArg: string
   head: string
   base: string
   connectionId?: string | null
@@ -1771,7 +1785,7 @@ async function findOpenPRByHeadBase(args: {
       'pr',
       'list',
       '--repo',
-      `${args.ownerRepo.owner}/${args.ownerRepo.repo}`,
+      args.repoArg,
       '--head',
       args.head,
       '--base',
@@ -1844,11 +1858,11 @@ export async function createGitHubPullRequest(
     }
   }
 
-  const ownerRepo = await getOwnerRepo(
-    repoPath,
-    connectionId,
-    ...hostedReviewLocalGitOptionArgs(options)
-  )
+  // Why: github.com-only slug parsing returns null for GHES, so fall back to the
+  // enterprise resolver (gh-authenticated custom host) before giving up (#8312).
+  const ownerRepo =
+    (await getOwnerRepo(repoPath, connectionId, ...hostedReviewLocalGitOptionArgs(options))) ??
+    (await getEnterpriseGitHubRepoSlug(repoPath, connectionId, options))
   if (!ownerRepo) {
     return {
       ok: false,
@@ -1856,6 +1870,8 @@ export async function createGitHubPullRequest(
       error: 'Creating pull requests requires a GitHub remote.'
     }
   }
+  // Host-qualified for GHES so gh targets the Enterprise server, not github.com.
+  const repoArg = ghRepoArg(ownerRepo)
 
   const base = normalizeHostedReviewBaseRef(input.base)
   const head = input.head ? normalizeHostedReviewHeadRef(input.head) || undefined : undefined
@@ -1888,7 +1904,7 @@ export async function createGitHubPullRequest(
       'pr',
       'create',
       '--repo',
-      `${ownerRepo.owner}/${ownerRepo.repo}`,
+      repoArg,
       '--base',
       base,
       '--title',
@@ -1917,7 +1933,7 @@ export async function createGitHubPullRequest(
       const found = head
         ? await findOpenPRByHeadBase({
             repoPath,
-            ownerRepo,
+            repoArg,
             head,
             base,
             connectionId,
@@ -1941,7 +1957,7 @@ export async function createGitHubPullRequest(
       ) {
         const existing = await findOpenPRByHeadBase({
           repoPath,
-          ownerRepo,
+          repoArg,
           head,
           base,
           connectionId,
@@ -2392,6 +2408,7 @@ type TrackedUpstreamBranch = {
 }
 
 const TRACKED_UPSTREAM_SNAPSHOT_CACHE_TTL_MS = 30_000
+const TRACKED_UPSTREAM_SNAPSHOT_CACHE_MAX_ENTRIES = 512
 
 type TrackedUpstreamSnapshotCacheEntry = {
   expiresAt: number
@@ -2411,12 +2428,49 @@ const trackedUpstreamSnapshotInFlight = new Map<
   string,
   Promise<TrackedUpstreamSnapshotProbeResult>
 >()
-const trackedUpstreamSnapshotGenerations = new Map<string, number>()
+const trackedUpstreamSnapshotGenerations = new Map<string, symbol>()
 
-function beginTrackedUpstreamSnapshotProbe(cacheKey: string): number {
-  const nextGeneration = (trackedUpstreamSnapshotGenerations.get(cacheKey) ?? 0) + 1
-  trackedUpstreamSnapshotGenerations.set(cacheKey, nextGeneration)
-  return nextGeneration
+function beginTrackedUpstreamSnapshotProbe(cacheKey: string): symbol {
+  const generation = Symbol()
+  trackedUpstreamSnapshotGenerations.set(cacheKey, generation)
+  return generation
+}
+
+function finishTrackedUpstreamSnapshotProbe(cacheKey: string, generation: symbol): void {
+  // Why: generations only guard an active probe; retaining completed repo keys
+  // leaks worktree/runtime identities after the short-lived snapshot TTL expires.
+  if (trackedUpstreamSnapshotGenerations.get(cacheKey) === generation) {
+    trackedUpstreamSnapshotGenerations.delete(cacheKey)
+  }
+}
+
+function pruneTrackedUpstreamSnapshotCache(now: number): void {
+  for (const [cacheKey, cached] of trackedUpstreamSnapshotCache) {
+    if (cached.expiresAt <= now) {
+      trackedUpstreamSnapshotCache.delete(cacheKey)
+    }
+  }
+  // Why: workspace/runtime churn can create unbounded unique keys within one
+  // TTL window, so expiry sweeping alone is not a memory bound.
+  while (trackedUpstreamSnapshotCache.size > TRACKED_UPSTREAM_SNAPSHOT_CACHE_MAX_ENTRIES) {
+    const oldestKey = trackedUpstreamSnapshotCache.keys().next().value
+    if (oldestKey === undefined) {
+      break
+    }
+    trackedUpstreamSnapshotCache.delete(oldestKey)
+  }
+}
+
+export function _getTrackedUpstreamBranchCacheSizesForTests(): {
+  snapshots: number
+  inFlight: number
+  generations: number
+} {
+  return {
+    snapshots: trackedUpstreamSnapshotCache.size,
+    inFlight: trackedUpstreamSnapshotInFlight.size,
+    generations: trackedUpstreamSnapshotGenerations.size
+  }
 }
 
 export function __resetTrackedUpstreamBranchCacheForTests(): void {
@@ -2510,6 +2564,7 @@ async function getTrackedUpstreamBranch(
         upstreamsByBranchName: getCacheableTrackedUpstreamSnapshot(result.upstreamsByBranchName),
         expiresAt: Date.now() + TRACKED_UPSTREAM_SNAPSHOT_CACHE_TTL_MS
       })
+      pruneTrackedUpstreamSnapshotCache(Date.now())
     }
     if (trackedUpstreamSnapshotGenerations.get(cacheKey) !== probeGeneration) {
       const fresherCached = trackedUpstreamSnapshotCache.get(cacheKey)
@@ -2522,6 +2577,7 @@ async function getTrackedUpstreamBranch(
     if (trackedUpstreamSnapshotInFlight.get(cacheKey) === probe) {
       trackedUpstreamSnapshotInFlight.delete(cacheKey)
     }
+    finishTrackedUpstreamSnapshotProbe(cacheKey, probeGeneration)
   }
 }
 

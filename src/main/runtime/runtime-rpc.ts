@@ -124,6 +124,7 @@ const MOBILE_RPC_METHOD_ALLOWLIST = new Set([
   'accounts.selectCodex',
   'accounts.subscribe',
   'accounts.unsubscribe',
+  'aiVault.listSessions',
   'browser.back',
   'browser.dialogAccept',
   'browser.dialogDismiss',
@@ -160,6 +161,7 @@ const MOBILE_RPC_METHOD_ALLOWLIST = new Set([
   'files.readTerminalArtifactPreview',
   'files.resolveTerminalPath',
   'files.writeTerminalArtifact',
+  'folderWorkspace.list',
   'git.abortMerge',
   'git.abortRebase',
   'git.bulkStage',
@@ -230,11 +232,17 @@ const MOBILE_RPC_METHOD_ALLOWLIST = new Set([
   'github.updatePRState',
   'github.repoSlug',
   'github.workItem',
+  // Cross-repo GitHub work-item lookup: lets the mobile create-workspace Smart
+  // picker resolve a pasted github.com URL that points at a different repo.
+  'github.workItemByOwnerRepo',
   'github.workItemDetails',
   'gitlab.createIssue',
   'gitlab.addIssueComment',
   'gitlab.addMRComment',
   'gitlab.listWorkItems',
+  // Mobile create-workspace Smart picker: resolve a pasted GitLab URL to an exact
+  // issue/MR. (MR listing reuses gitlab.listWorkItems, which returns issues + MRs.)
+  'gitlab.workItemByPath',
   'gitlab.mergeMR',
   'gitlab.resolveMRDiscussion',
   'gitlab.todos',
@@ -282,6 +290,7 @@ const MOBILE_RPC_METHOD_ALLOWLIST = new Set([
   'preflight.check',
   'preflight.detectAgents',
   'preflight.detectRemoteAgents',
+  'projectGroup.list',
   'repo.baseRefDefault',
   'repo.gitAvailable',
   'repo.hooks',

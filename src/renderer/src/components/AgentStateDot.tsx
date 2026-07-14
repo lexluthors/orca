@@ -30,6 +30,7 @@ export type AgentDotState =
   // worktree-level permission dot.
   | 'permission'
 
+/** Return the accessible label shared by every visual agent-state marker. */
 export function agentStateLabel(state: AgentDotState): string {
   switch (state) {
     case 'working':
@@ -57,6 +58,7 @@ type Props = {
   className?: string
 }
 
+/** Render the compact state glyph used by agent rows and terminal tabs. */
 export const AgentStateDot = React.memo(function AgentStateDot({
   state,
   size = 'sm',
@@ -76,11 +78,8 @@ export const AgentStateDot = React.memo(function AgentStateDot({
           className={cn(
             // Why: match the sidebar worktree spinner's stepped cadence so
             // long-running visible agents do not keep a full-frame-rate loop.
-            // Sized like the check icon (not the filled dots): both are
-            // outline glyphs, so a smaller ring reads visibly undersized
-            // next to a 'done' check in the same list.
-            'block rounded-full border-2 border-yellow-500 border-t-transparent [animation:spin_1s_steps(12,end)_infinite]',
-            icon
+            'block rounded-full border-2 border-yellow-500 border-t-transparent [animation:spin_1s_steps(12,end)_infinite] motion-reduce:animate-none',
+            inner
           )}
         />
       </span>
