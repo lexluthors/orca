@@ -2,7 +2,8 @@ import { ipcMain } from 'electron'
 import type {
   CreateGitPlatformConnectionArgs,
   UpdateGitPlatformConnectionArgs,
-  ListRemoteReposArgs
+  ListRemoteReposArgs,
+  ListRemoteBranchesArgs
 } from '../../shared/git-platforms'
 import {
   loadConnections,
@@ -47,25 +48,19 @@ export function registerGitPlatformsHandlers(): void {
     }
   )
 
-  ipcMain.handle(
-    'git-platforms:remove-connection',
-    async (_event, args: { id: string }) => {
-      try {
-        await deleteConnection(args.id)
-        return { success: true }
-      } catch (error) {
-        console.error('[git-platforms:remove-connection]', error)
-        throw error
-      }
+  ipcMain.handle('git-platforms:remove-connection', async (_event, args: { id: string }) => {
+    try {
+      await deleteConnection(args.id)
+      return { success: true }
+    } catch (error) {
+      console.error('[git-platforms:remove-connection]', error)
+      throw error
     }
-  )
+  })
 
   ipcMain.handle(
     'git-platforms:test-connection',
-    async (
-      _event,
-      args: { id: string } | CreateGitPlatformConnectionArgs
-    ) => {
+    async (_event, args: { id: string } | CreateGitPlatformConnectionArgs) => {
       try {
         // If an id is provided, test the existing connection; otherwise test
         // the provided args directly (for testing before saving).
@@ -89,62 +84,70 @@ export function registerGitPlatformsHandlers(): void {
     }
   )
 
-  ipcMain.handle(
-    'git-platforms:list-repos',
-    async (_event, args: ListRemoteReposArgs) => {
-      try {
-        const connection = await getConnection(args.connectionId)
-        if (!connection) {
-          throw new Error(`Connection not found: ${args.connectionId}`)
-        }
-        const adapter = getAdapter(connection.type)
-        const repos = await fetchAllPages(
-          adapter,
-          connection.baseUrl,
-          connection.token,
-          args.connectionId,
-          {
-            query: args.query,
-            visibility: args.visibility,
-            membership: args.membership,
-            sort: args.sort,
-            order: args.order
-          }
-        )
-        return {
-          repos,
-          total: repos.length,
-          page: 1,
-          perPage: repos.length,
-          hasMore: false
-        }
-      } catch (error) {
-        console.error('[git-platforms:list-repos]', error)
-        throw error
+  ipcMain.handle('git-platforms:list-repos', async (_event, args: ListRemoteReposArgs) => {
+    try {
+      const connection = await getConnection(args.connectionId)
+      if (!connection) {
+        throw new Error(`Connection not found: ${args.connectionId}`)
       }
+      const adapter = getAdapter(connection.type)
+      const repos = await fetchAllPages(
+        adapter,
+        connection.baseUrl,
+        connection.token,
+        args.connectionId,
+        {
+          query: args.query,
+          visibility: args.visibility,
+          membership: args.membership,
+          sort: args.sort,
+          order: args.order
+        }
+      )
+      return {
+        repos,
+        total: repos.length,
+        page: 1,
+        perPage: repos.length,
+        hasMore: false
+      }
+    } catch (error) {
+      console.error('[git-platforms:list-repos]', error)
+      throw error
     }
-  )
+  })
 
-  ipcMain.handle(
-    'git-platforms:sync-repos',
-    async (_event, args: { connectionId: string }) => {
-      try {
-        const connection = await getConnection(args.connectionId)
-        if (!connection) {
-          throw new Error(`Connection not found: ${args.connectionId}`)
-        }
-        const adapter = getAdapter(connection.type)
-        const repos = await fetchAllPages(
-          adapter,
-          connection.baseUrl,
-          connection.token,
-          args.connectionId
-        )
-        return repos
-      } catch (error) {
-        console.error('[git-platforms:sync-repos]', error)
-        throw error
+  ipcMain.handle('git-platforms:sync-repos', async (_event, args: { connectionId: string }) => {
+    try {
+      const connection = await getConnection(args.connectionId)
+      if (!connection) {
+        throw new Error(`Connection not found: ${args.connectionId}`)
       }
+      const adapter = getAdapter(connection.type)
+      const repos = await fetchAllPages(
+        adapter,
+        connection.baseUrl,
+        connection.token,
+        args.connectionId
+      )
+      return repos
+    } catch (error) {
+      console.error('[git-platforms:sync-repos]', error)
+      throw error
     }
-  )
+  })
+
+  ipcMain.handle('git-platforms:list-branches', async (_event, args: ListRemoteBranchesArgs) => {
+    try {
+      const connection = await getConnection(args.connectionId)
+      if (!connection) {
+        throw new Error(`Connection not found: ${args.connectionId}`)
+      }
+      const adapter = getAdapter(connection.type)
+      return await adapter.listBranches(connection.baseUrl, connection.token, args.repoId)
+    } catch (error) {
+      console.error('[git-platforms:list-branches]', error)
+      throw error
+    }
+  })
 }

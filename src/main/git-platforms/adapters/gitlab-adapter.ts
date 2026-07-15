@@ -2,7 +2,8 @@ import type {
   ConnectionTestResult,
   ListRemoteReposArgs,
   RemoteReposPage,
-  RemoteRepository
+  RemoteRepository,
+  RemoteBranch
 } from '../../../shared/git-platforms'
 
 const FETCH_TIMEOUT_MS = 10_000
@@ -36,10 +37,7 @@ type GitLabProject = {
   }
 }
 
-const mapGitLabProject = (
-  project: GitLabProject,
-  connectionId: string
-): RemoteRepository => {
+const mapGitLabProject = (project: GitLabProject, connectionId: string): RemoteRepository => {
   const languages = project.languages ?? []
   const language = languages.length > 0 ? languages[0] : null
   return {
@@ -74,7 +72,7 @@ export const testConnection = async (
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
+        Accept: 'application/json',
         'PRIVATE-TOKEN': token
       },
       signal: controller.signal
@@ -96,16 +94,13 @@ export const testConnection = async (
     let serverVersion: string | undefined
     try {
       const versionController = createAbortController()
-      const versionResponse = await fetch(
-        `${baseUrl.replace(/\/$/, '')}/api/v4/version`,
-        {
-          headers: {
-            'Accept': 'application/json',
-            'PRIVATE-TOKEN': token
-          },
-          signal: versionController.signal
-        }
-      )
+      const versionResponse = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v4/version`, {
+        headers: {
+          Accept: 'application/json',
+          'PRIVATE-TOKEN': token
+        },
+        signal: versionController.signal
+      })
       if (versionResponse.ok) {
         const versionData = (await versionResponse.json()) as { version?: string }
         serverVersion = versionData.version
@@ -140,7 +135,8 @@ export const listRepos = async (
   const params = new URLSearchParams({
     page: String(page),
     per_page: String(perPage),
-    order_by: args.sort === 'stars' ? 'star_count' : (args.sort === 'name' ? 'name' : 'last_activity_at'),
+    order_by:
+      args.sort === 'stars' ? 'star_count' : args.sort === 'name' ? 'name' : 'last_activity_at',
     sort: args.order ?? 'desc'
   })
   // membership param can cause 400 on some self-hosted instances with limited token scope
@@ -157,7 +153,7 @@ export const listRepos = async (
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      'Accept': 'application/json',
+      Accept: 'application/json',
       'PRIVATE-TOKEN': token
     },
     signal: controller.signal
@@ -166,17 +162,20 @@ export const listRepos = async (
     let detail = ''
     try {
       const body = await response.json()
-      detail = typeof body === 'object' && body !== null
-        ? (body.message ?? body.error ?? JSON.stringify(body))
-        : String(body)
-    } catch { /* ignore parse failure */ }
+      detail =
+        typeof body === 'object' && body !== null
+          ? (body.message ?? body.error ?? JSON.stringify(body))
+          : String(body)
+    } catch {
+      /* ignore parse failure */
+    }
     throw new Error(
       `GitLab API error: HTTP ${response.status} ${response.statusText}${detail ? ` — ${detail}` : ''}\nURL: ${url}`
     )
   }
   const projects = (await response.json()) as GitLabProject[]
   const totalHeader = response.headers.get('x-total')
-  const total = totalHeader ? parseInt(totalHeader, 10) : projects.length
+  const total = totalHeader ? Number.parseInt(totalHeader, 10) : projects.length
   return {
     repos: projects.map((p) => mapGitLabProject(p, args.connectionId)),
     total,
@@ -201,7 +200,7 @@ export const searchRepos = async (
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      'Accept': 'application/json',
+      Accept: 'application/json',
       'PRIVATE-TOKEN': token
     },
     signal: controller.signal
@@ -211,4 +210,37 @@ export const searchRepos = async (
   }
   const projects = (await response.json()) as GitLabProject[]
   return projects.map((p) => mapGitLabProject(p, connectionId))
+}
+
+export const listBranches = async (
+  baseUrl: string,
+  token: string,
+  repoIdOrPath: string
+): Promise<RemoteBranch[]> => {
+  const controller = createAbortController()
+  const encodedId = encodeURIComponent(repoIdOrPath)
+  const url = `${baseUrl.replace(/\/$/, '')}/api/v4/projects/${encodedId}/repository/branches?per_page=100`
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'PRIVATE-TOKEN': token
+    },
+    signal: controller.signal
+  })
+  if (!response.ok) {
+    throw new Error(`GitLab API error: HTTP ${response.status} ${response.statusText}`)
+  }
+  const branches = (await response.json()) as {
+    name: string
+    default?: boolean
+    protected?: boolean
+    commit?: { id: string }
+  }[]
+  return branches.map((b) => ({
+    name: b.name,
+    isDefault: b.default ?? false,
+    isProtected: b.protected,
+    commitSha: b.commit?.id
+  }))
 }

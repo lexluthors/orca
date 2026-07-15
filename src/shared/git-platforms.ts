@@ -121,6 +121,27 @@ export type RemoteReposPage = {
   hasMore: boolean
 }
 
+/** A branch from a remote repository. */
+export type RemoteBranch = {
+  /** Branch name, e.g. "main", "feature/xyz". */
+  name: string
+  /** Whether this is the default branch. */
+  isDefault: boolean
+  /** Whether this branch is protected (GitLab/GitHub). */
+  isProtected?: boolean
+  /** Last commit SHA on this branch. */
+  commitSha?: string
+}
+
+/** Arguments for listing remote branches. */
+export type ListRemoteBranchesArgs = {
+  connectionId: string
+  /** Platform-specific repo identifier (numeric ID or full name). */
+  repoId: string
+  page?: number
+  perPage?: number
+}
+
 /** Default API base URLs per platform type. */
 export const GIT_PLATFORM_DEFAULT_URLS: Record<GitPlatformType, string> = {
   github: 'https://api.github.com',

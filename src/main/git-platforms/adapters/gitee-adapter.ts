@@ -2,7 +2,8 @@ import type {
   ConnectionTestResult,
   ListRemoteReposArgs,
   RemoteReposPage,
-  RemoteRepository
+  RemoteRepository,
+  RemoteBranch
 } from '../../../shared/git-platforms'
 
 const FETCH_TIMEOUT_MS = 10_000
@@ -39,10 +40,7 @@ type GiteeRepo = {
   }
 }
 
-const mapGiteeRepo = (
-  repo: GiteeRepo,
-  connectionId: string
-): RemoteRepository => ({
+const mapGiteeRepo = (repo: GiteeRepo, connectionId: string): RemoteRepository => ({
   id: String(repo.id),
   connectionId,
   platform: 'gitee',
@@ -73,7 +71,7 @@ export const testConnection = async (
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json'
+        Accept: 'application/json'
       },
       signal: controller.signal
     })
@@ -134,7 +132,7 @@ export const listRepos = async (
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      'Accept': 'application/json'
+      Accept: 'application/json'
     },
     signal: controller.signal
   })
@@ -143,7 +141,7 @@ export const listRepos = async (
   }
   const repos = (await response.json()) as GiteeRepo[]
   const totalHeader = response.headers.get('total_count')
-  const total = totalHeader ? parseInt(totalHeader, 10) : repos.length
+  const total = totalHeader ? Number.parseInt(totalHeader, 10) : repos.length
   return {
     repos: repos.map((r) => mapGiteeRepo(r, args.connectionId)),
     total,
@@ -151,4 +149,34 @@ export const listRepos = async (
     perPage,
     hasMore: page * perPage < total
   }
+}
+
+export const listBranches = async (
+  baseUrl: string,
+  token: string,
+  repoFullName: string
+): Promise<RemoteBranch[]> => {
+  const controller = createAbortController()
+  const url = `${baseUrl.replace(/\/$/, '')}/api/v5/repos/${repoFullName}/branches?access_token=${encodeURIComponent(token)}&per_page=100`
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json'
+    },
+    signal: controller.signal
+  })
+  if (!response.ok) {
+    throw new Error(`Gitee API error: HTTP ${response.status} ${response.statusText}`)
+  }
+  const branches = (await response.json()) as {
+    name: string
+    protected?: boolean
+    commit?: { sha: string }
+  }[]
+  return branches.map((b) => ({
+    name: b.name,
+    isDefault: false,
+    isProtected: b.protected,
+    commitSha: b.commit?.sha
+  }))
 }

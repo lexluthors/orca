@@ -2,7 +2,8 @@ import type {
   ConnectionTestResult,
   ListRemoteReposArgs,
   RemoteReposPage,
-  RemoteRepository
+  RemoteRepository,
+  RemoteBranch
 } from '../../../shared/git-platforms'
 
 const FETCH_TIMEOUT_MS = 10_000
@@ -35,10 +36,7 @@ type GitHubRepo = {
   visibility?: string
 }
 
-const mapGitHubRepo = (
-  repo: GitHubRepo,
-  connectionId: string
-): RemoteRepository => ({
+const mapGitHubRepo = (repo: GitHubRepo, connectionId: string): RemoteRepository => ({
   id: String(repo.id),
   connectionId,
   platform: 'github',
@@ -69,8 +67,8 @@ export const testConnection = async (
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
         'X-GitHub-Api-Version': '2022-11-28'
       },
       signal: controller.signal
@@ -131,8 +129,8 @@ export const listRepos = async (
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      'Accept': 'application/vnd.github+json',
-      'Authorization': `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
       'X-GitHub-Api-Version': '2022-11-28'
     },
     signal: controller.signal
@@ -151,4 +149,36 @@ export const listRepos = async (
     perPage,
     hasMore: hasNext
   }
+}
+
+export const listBranches = async (
+  baseUrl: string,
+  token: string,
+  repoFullName: string
+): Promise<RemoteBranch[]> => {
+  const controller = createAbortController()
+  const url = `${baseUrl.replace(/\/$/, '')}/repos/${repoFullName}/branches?per_page=100`
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+      'X-GitHub-Api-Version': '2022-11-28'
+    },
+    signal: controller.signal
+  })
+  if (!response.ok) {
+    throw new Error(`GitHub API error: HTTP ${response.status} ${response.statusText}`)
+  }
+  const branches = (await response.json()) as {
+    name: string
+    protected?: boolean
+    commit?: { sha: string }
+  }[]
+  return branches.map((b) => ({
+    name: b.name,
+    isDefault: false,
+    isProtected: b.protected,
+    commitSha: b.commit?.sha
+  }))
 }

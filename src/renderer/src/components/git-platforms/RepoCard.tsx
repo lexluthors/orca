@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useState } from 'react'
 import {
   Star,
   GitFork,
@@ -6,13 +6,17 @@ import {
   Copy,
   GitBranch,
   Lock,
-  Globe
+  Globe,
+  ExternalLink,
+  List
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import type { RemoteRepository } from '../../../../shared/git-platforms'
+import { BranchDialog } from './BranchDialog'
+import { CloneDialog } from './CloneDialog'
 
-interface RepoCardProps {
+type RepoCardProps = {
   repo: RemoteRepository
 }
 
@@ -33,21 +37,42 @@ function formatRelativeTime(isoDate: string): string {
     }
     return `${diffMonth}mo ago`
   }
-  if (diffDay > 0) return `${diffDay}d ago`
-  if (diffHr > 0) return `${diffHr}h ago`
-  if (diffMin > 0) return `${diffMin}m ago`
+  if (diffDay > 0) {
+    return `${diffDay}d ago`
+  }
+  if (diffHr > 0) {
+    return `${diffHr}h ago`
+  }
+  if (diffMin > 0) {
+    return `${diffMin}m ago`
+  }
   return 'just now'
 }
 
 function copyToClipboard(text: string): void {
-  navigator.clipboard.writeText(text).catch(() => {
-    // Silently fail — clipboard API may not be available
-  })
+  window.api.ui.writeClipboardText(text)
+}
+
+/** Derive the web browser URL for a repo from its HTTP clone URL. */
+function getRepoWebUrl(repo: RemoteRepository): string {
+  // HTTP clone URLs look like:
+  //   GitHub: https://github.com/owner/repo.git
+  //   GitLab: https://gitlab.example.com/group/repo.git
+  //   Gitee:  https://gitee.com/owner/repo.git
+  // Strip .git suffix to get the web URL.
+  return repo.httpUrl.replace(/\.git$/, '')
 }
 
 export function RepoCard({ repo }: RepoCardProps): React.JSX.Element {
+  const [branchDialogOpen, setBranchDialogOpen] = useState(false)
+  const [cloneDialogOpen, setCloneDialogOpen] = useState(false)
+
   const handleCopyHttp = useCallback(() => copyToClipboard(repo.httpUrl), [repo.httpUrl])
   const handleCopySsh = useCallback(() => copyToClipboard(repo.sshUrl), [repo.sshUrl])
+  const handleOpenInBrowser = useCallback(() => {
+    const url = getRepoWebUrl(repo)
+    window.api.shell.openUrl(url)
+  }, [repo])
 
   return (
     <div className="rounded-lg border border-border/50 bg-card p-4 transition-colors hover:border-border">
@@ -56,11 +81,18 @@ export function RepoCard({ repo }: RepoCardProps): React.JSX.Element {
         <div className="flex-1 overflow-hidden">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-foreground">{repo.name}</h3>
-            <Badge variant={repo.isPrivate ? 'secondary' : 'outline'} className="shrink-0 text-[10px]">
+            <Badge
+              variant={repo.isPrivate ? 'secondary' : 'outline'}
+              className="shrink-0 text-[10px]"
+            >
               {repo.isPrivate ? (
-                <><Lock className="size-2.5" /> Private</>
+                <>
+                  <Lock className="size-2.5" /> Private
+                </>
               ) : (
-                <><Globe className="size-2.5" /> Public</>
+                <>
+                  <Globe className="size-2.5" /> Public
+                </>
               )}
             </Badge>
             {repo.isFork && (
@@ -134,16 +166,45 @@ export function RepoCard({ repo }: RepoCardProps): React.JSX.Element {
         </button>
         <button
           type="button"
+          onClick={() => setBranchDialogOpen(true)}
+          className={cn(
+            'flex items-center gap-1 rounded-md border border-border/50 px-2 py-1 text-[11px]',
+            'text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+          )}
+          title="View all branches"
+        >
+          <List className="size-3" />
+          Branches
+        </button>
+        <button
+          type="button"
+          onClick={handleOpenInBrowser}
+          className={cn(
+            'flex items-center gap-1 rounded-md border border-border/50 px-2 py-1 text-[11px]',
+            'text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+          )}
+          title="Open in browser"
+        >
+          <ExternalLink className="size-3" />
+          Browse
+        </button>
+        <button
+          type="button"
+          onClick={() => setCloneDialogOpen(true)}
           className={cn(
             'flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-[11px]',
             'text-primary transition-colors hover:bg-primary/20'
           )}
-          title="Clone (coming soon)"
+          title="Clone repository"
         >
           <GitBranch className="size-3" />
           Clone
         </button>
       </div>
+
+      {/* Dialogs */}
+      <BranchDialog repo={repo} open={branchDialogOpen} onOpenChange={setBranchDialogOpen} />
+      <CloneDialog repo={repo} open={cloneDialogOpen} onOpenChange={setCloneDialogOpen} />
     </div>
   )
 }

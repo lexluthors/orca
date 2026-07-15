@@ -9,17 +9,23 @@ import type {
   GitPlatformType,
   GitPlatformConnection,
   RemoteRepository,
+  RemoteBranch,
+  RemoteReposPage,
   ConnectionTestResult,
   CreateGitPlatformConnectionArgs,
   UpdateGitPlatformConnectionArgs,
-  ListRemoteReposArgs
+  ListRemoteReposArgs,
+  ListRemoteBranchesArgs
 } from '../../../../shared/git-platforms'
 
 // The IPC API surface exposed by the main process under window.api.gitPlatforms
-interface GitPlatformsApi {
+type GitPlatformsApi = {
   listConnections: () => Promise<GitPlatformConnection[]>
   addConnection: (args: CreateGitPlatformConnectionArgs) => Promise<GitPlatformConnection>
-  updateConnection: (id: string, args: UpdateGitPlatformConnectionArgs) => Promise<GitPlatformConnection>
+  updateConnection: (
+    id: string,
+    args: UpdateGitPlatformConnectionArgs
+  ) => Promise<GitPlatformConnection>
   removeConnection: (id: string) => Promise<void>
   testConnection: (args: {
     type: GitPlatformType
@@ -27,15 +33,22 @@ interface GitPlatformsApi {
     token: string
     tokenType: 'pat' | 'oauth'
   }) => Promise<ConnectionTestResult>
-  listRepos: (args: ListRemoteReposArgs) => Promise<import('../../../../shared/git-platforms').RemoteReposPage>
+  listRepos: (args: ListRemoteReposArgs) => Promise<RemoteReposPage>
   syncRepos: (connectionId: string) => Promise<RemoteRepository[]>
+  listBranches: (args: ListRemoteBranchesArgs) => Promise<RemoteBranch[]>
 }
+
+type WindowWithApi = Window & { api: { gitPlatforms: GitPlatformsApi } }
 
 function getApi(): GitPlatformsApi {
-  return (window as any).api.gitPlatforms
+  return (window as unknown as WindowWithApi).api.gitPlatforms
 }
 
-interface GitPlatformsState {
+function getErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback
+}
+
+type GitPlatformsState = {
   // --- Data ---
   connections: GitPlatformConnection[]
   selectedConnectionId: string | null
@@ -66,6 +79,7 @@ interface GitPlatformsState {
   selectConnection: (id: string | null) => void
   loadRepos: (connectionId: string) => Promise<void>
   syncRepos: (connectionId: string) => Promise<void>
+  listBranches: (connectionId: string, repoId: string) => Promise<RemoteBranch[]>
   setSearchQuery: (query: string) => void
   setPlatformFilter: (filter: GitPlatformType | 'all') => void
   setVisibilityFilter: (filter: 'all' | 'public' | 'private') => void
@@ -99,8 +113,11 @@ export const useGitPlatformsStore = create<GitPlatformsState>()(
         try {
           const connections = await getApi().listConnections()
           set({ connections, isLoadingConnections: false })
-        } catch (err: any) {
-          set({ isLoadingConnections: false, lastError: err.message ?? 'Failed to load connections' })
+        } catch (err: unknown) {
+          set({
+            isLoadingConnections: false,
+            lastError: getErrorMessage(err, 'Failed to load connections')
+          })
         }
       },
 
@@ -109,8 +126,8 @@ export const useGitPlatformsStore = create<GitPlatformsState>()(
         try {
           const conn = await getApi().addConnection(args)
           set((s) => ({ connections: [...s.connections, conn] }))
-        } catch (err: any) {
-          set({ lastError: err.message ?? 'Failed to add connection' })
+        } catch (err: unknown) {
+          set({ lastError: getErrorMessage(err, 'Failed to add connection') })
           throw err
         }
       },
@@ -122,8 +139,8 @@ export const useGitPlatformsStore = create<GitPlatformsState>()(
           set((s) => ({
             connections: s.connections.map((c) => (c.id === id ? updated : c))
           }))
-        } catch (err: any) {
-          set({ lastError: err.message ?? 'Failed to update connection' })
+        } catch (err: unknown) {
+          set({ lastError: getErrorMessage(err, 'Failed to update connection') })
           throw err
         }
       },
@@ -142,8 +159,8 @@ export const useGitPlatformsStore = create<GitPlatformsState>()(
               reposByConnection: nextReposByConnection
             }
           })
-        } catch (err: any) {
-          set({ lastError: err.message ?? 'Failed to remove connection' })
+        } catch (err: unknown) {
+          set({ lastError: getErrorMessage(err, 'Failed to remove connection') })
           throw err
         }
       },
@@ -182,8 +199,8 @@ export const useGitPlatformsStore = create<GitPlatformsState>()(
             reposByConnection: { ...s.reposByConnection, [connectionId]: page.repos },
             isLoadingRepos: false
           }))
-        } catch (err: any) {
-          set({ isLoadingRepos: false, lastError: err.message ?? 'Failed to load repos' })
+        } catch (err: unknown) {
+          set({ isLoadingRepos: false, lastError: getErrorMessage(err, 'Failed to load repos') })
         }
       },
 
@@ -196,9 +213,13 @@ export const useGitPlatformsStore = create<GitPlatformsState>()(
             reposByConnection: { ...s.reposByConnection, [connectionId]: repos },
             isLoadingRepos: false
           }))
-        } catch (err: any) {
-          set({ isLoadingRepos: false, lastError: err.message ?? 'Failed to sync repos' })
+        } catch (err: unknown) {
+          set({ isLoadingRepos: false, lastError: getErrorMessage(err, 'Failed to sync repos') })
         }
+      },
+
+      listBranches: async (connectionId, repoId) => {
+        return await getApi().listBranches({ connectionId, repoId })
       },
 
       setSearchQuery: (query) => set({ searchQuery: query }),

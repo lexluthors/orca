@@ -6,14 +6,16 @@
 import { ipcRenderer } from 'electron'
 
 export const gitPlatformsApi = {
-  listConnections: (): Promise<unknown> =>
-    ipcRenderer.invoke('git-platforms:list-connections'),
+  listConnections: (): Promise<unknown> => ipcRenderer.invoke('git-platforms:list-connections'),
 
   addConnection: (args: unknown): Promise<unknown> =>
     ipcRenderer.invoke('git-platforms:add-connection', args),
 
   updateConnection: (id: string, args: unknown): Promise<unknown> =>
-    ipcRenderer.invoke('git-platforms:update-connection', { id, ...args as Record<string, unknown> }),
+    ipcRenderer.invoke('git-platforms:update-connection', {
+      id,
+      ...(args as Record<string, unknown>)
+    }),
 
   removeConnection: (id: string): Promise<unknown> =>
     ipcRenderer.invoke('git-platforms:remove-connection', { id }),
@@ -25,5 +27,8 @@ export const gitPlatformsApi = {
     ipcRenderer.invoke('git-platforms:list-repos', args),
 
   syncRepos: (connectionId: string): Promise<unknown> =>
-    ipcRenderer.invoke('git-platforms:sync-repos', { connectionId })
+    ipcRenderer.invoke('git-platforms:sync-repos', { connectionId }),
+
+  listBranches: (args: { connectionId: string; repoId: string }): Promise<unknown> =>
+    ipcRenderer.invoke('git-platforms:list-branches', args)
 }

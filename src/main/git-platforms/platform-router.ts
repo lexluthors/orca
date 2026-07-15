@@ -1,4 +1,11 @@
-import type { GitPlatformType, ConnectionTestResult, ListRemoteReposArgs, RemoteReposPage, RemoteRepository } from '../../shared/git-platforms'
+import type {
+  GitPlatformType,
+  ConnectionTestResult,
+  ListRemoteReposArgs,
+  RemoteReposPage,
+  RemoteRepository,
+  RemoteBranch
+} from '../../shared/git-platforms'
 import * as gitlabAdapter from './adapters/gitlab-adapter'
 import * as githubAdapter from './adapters/github-adapter'
 import * as giteeAdapter from './adapters/gitee-adapter'
@@ -6,6 +13,7 @@ import * as giteeAdapter from './adapters/gitee-adapter'
 export type PlatformAdapter = {
   testConnection(baseUrl: string, token: string): Promise<ConnectionTestResult>
   listRepos(baseUrl: string, token: string, args: ListRemoteReposArgs): Promise<RemoteReposPage>
+  listBranches(baseUrl: string, token: string, repoId: string): Promise<RemoteBranch[]>
 }
 
 export const getAdapter = (type: GitPlatformType): PlatformAdapter => {
@@ -48,7 +56,9 @@ export const fetchAllPages = async (
     hasMore = result.hasMore && result.repos.length > 0
     page++
     // Safety cap — prevents runaway loops on broken pagination
-    if (page > 50) break
+    if (page > 50) {
+      break
+    }
   }
 
   return allRepos
