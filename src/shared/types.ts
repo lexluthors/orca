@@ -3260,6 +3260,7 @@ export type TopLevelView =
   | 'skills'
   | 'mobile'
   | 'work'
+  | 'git'
 
 export type PersistedUIState = {
   lastActiveRepoId: string | null

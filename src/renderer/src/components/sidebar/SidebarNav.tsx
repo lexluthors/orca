@@ -12,6 +12,7 @@ import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { SetupGuideSidebarEntry } from './SetupGuideSidebarEntry'
 import { SidebarTaskNavButton } from './SidebarTaskNavButton'
 import { SidebarWorkNavButton } from './SidebarWorkNavButton'
+import { SidebarGitNavButton } from './SidebarGitNavButton'
 import { HideSidebarMenu } from './sidebar-nav-controls'
 import { translate } from '@/i18n/i18n'
 
@@ -68,6 +69,7 @@ const SidebarNav = React.memo(function SidebarNav() {
     >
       <SetupGuideSidebarEntry />
       <SidebarWorkNavButton />
+      <SidebarGitNavButton />
       <SidebarTaskNavButton />
       {showAutomationsButton ? (
         <ContextMenu>

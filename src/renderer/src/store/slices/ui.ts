@@ -508,7 +508,8 @@ const TOP_LEVEL_VIEW_LOOKUP: Record<TopLevelView, true> = {
   space: true,
   skills: true,
   mobile: true,
-  work: true
+  work: true,
+  git: true
 }
 const KNOWN_TOP_LEVEL_VIEWS = new Set<string>(Object.keys(TOP_LEVEL_VIEW_LOOKUP))
 
@@ -633,6 +634,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'git'
   previousViewBeforeTasks:
     | 'terminal'
     | 'settings'
@@ -642,6 +644,7 @@ export type UISlice = {
     | 'skills'
     | 'mobile'
     | 'work'
+    | 'git'
   previousViewBeforeSettings:
     | 'terminal'
     | 'tasks'
@@ -651,6 +654,7 @@ export type UISlice = {
     | 'skills'
     | 'mobile'
     | 'work'
+    | 'git'
   previousViewBeforeActivity:
     | 'terminal'
     | 'settings'
@@ -660,6 +664,7 @@ export type UISlice = {
     | 'skills'
     | 'mobile'
     | 'work'
+    | 'git'
   previousViewBeforeAutomations:
     | 'terminal'
     | 'settings'
@@ -669,6 +674,7 @@ export type UISlice = {
     | 'skills'
     | 'mobile'
     | 'work'
+    | 'git'
   previousViewBeforeSpace:
     | 'terminal'
     | 'settings'
@@ -678,6 +684,7 @@ export type UISlice = {
     | 'skills'
     | 'mobile'
     | 'work'
+    | 'git'
   previousViewBeforeSkills:
     | 'terminal'
     | 'settings'
@@ -687,6 +694,7 @@ export type UISlice = {
     | 'space'
     | 'mobile'
     | 'work'
+    | 'git'
   previousViewBeforeMobile:
     | 'terminal'
     | 'settings'
@@ -695,6 +703,17 @@ export type UISlice = {
     | 'automations'
     | 'space'
     | 'skills'
+    | 'work'
+    | 'git'
+  previousViewBeforeGit:
+    | 'terminal'
+    | 'settings'
+    | 'tasks'
+    | 'activity'
+    | 'automations'
+    | 'space'
+    | 'skills'
+    | 'mobile'
     | 'work'
   setActiveView: (view: UISlice['activeView']) => void
   taskPageData: {
@@ -778,6 +797,8 @@ export type UISlice = {
   closeMobilePage: () => void
   openWorkPage: () => void
   closeWorkPage: () => void
+  openGitPage: () => void
+  closeGitPage: () => void
   setNewWorkspaceDraft: (draft: NonNullable<UISlice['newWorkspaceDraft']>) => void
   clearNewWorkspaceDraft: () => void
   openSettingsPage: () => void
@@ -1248,6 +1269,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   previousViewBeforeSpace: 'terminal',
   previousViewBeforeSkills: 'terminal',
   previousViewBeforeMobile: 'terminal',
+  previousViewBeforeGit: 'terminal',
   setActiveView: (view) => set({ activeView: view }),
   taskPageData: {},
   taskResumeState: undefined,
@@ -1534,6 +1556,16 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   closeWorkPage: () =>
     set((state) => ({
       activeView: state.previousViewBeforeWork
+    })),
+  openGitPage: () =>
+    set((state) => ({
+      activeView: 'git',
+      previousViewBeforeGit:
+        state.activeView === 'git' ? state.previousViewBeforeGit : state.activeView
+    })),
+  closeGitPage: () =>
+    set((state) => ({
+      activeView: state.previousViewBeforeGit
     })),
   setNewWorkspaceDraft: (draft) => set({ newWorkspaceDraft: draft }),
   clearNewWorkspaceDraft: () => set({ newWorkspaceDraft: null }),
