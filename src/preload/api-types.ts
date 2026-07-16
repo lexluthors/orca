@@ -192,6 +192,7 @@ import type {
   FolderWorkspace,
   ProjectGroupImportResult,
   ProjectGroupImportMode,
+  ProjectGroupRescanResult,
   ShellHydrationFailureReason,
   SparsePreset,
   SearchOptions,
@@ -1090,6 +1091,7 @@ export type PreloadApi = {
       scanId?: string
       mode: ProjectGroupImportMode
     }) => Promise<ProjectGroupImportResult>
+    rescan: (args: { groupId: string }) => Promise<ProjectGroupRescanResult>
   }
   folderWorkspaces: {
     list: () => Promise<FolderWorkspace[]>

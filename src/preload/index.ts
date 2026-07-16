@@ -654,7 +654,8 @@ const api = {
       ipcRenderer.on('projectGroups:scanNestedProgress', listener)
       return () => ipcRenderer.removeListener('projectGroups:scanNestedProgress', listener)
     },
-    importNested: (args) => ipcRenderer.invoke('projectGroups:importNested', args)
+    importNested: (args) => ipcRenderer.invoke('projectGroups:importNested', args),
+    rescan: (args) => ipcRenderer.invoke('projectGroups:rescan', args)
   } satisfies PreloadApi['projectGroups'],
 
   folderWorkspaces: {

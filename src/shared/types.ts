@@ -373,6 +373,14 @@ export type NestedRepoScanResult = {
 
 export type ProjectGroupImportMode = 'group' | 'separate'
 
+export type ProjectGroupRescanResult = {
+  importedCount: number
+  alreadyKnownCount: number
+  failedCount: number
+  scannedRepoCount: number
+  newRepoCount: number
+}
+
 export type ProjectGroupImportProjectResult = {
   path: string
   projectId?: string

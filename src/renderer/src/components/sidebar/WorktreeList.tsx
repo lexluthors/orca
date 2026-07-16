@@ -17,6 +17,7 @@ import {
   FolderX,
   Loader2,
   Plus,
+  RefreshCw,
   Server,
   ServerOff,
   Shapes,
@@ -1405,6 +1406,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
   const canReorderProjectGroupHeaders = groupBy === 'repo' && hasProjectGroups
   const moveProjectToGroup = useAppStore((s) => s.moveProjectToGroup)
   const updateProjectGroup = useAppStore((s) => s.updateProjectGroup)
+  const rescanProjectGroup = useAppStore((s) => s.rescanProjectGroup)
   const lastVisibleRefreshKeyRef = useRef('')
   const reportVisibleGitHubPRRefreshCandidates = useAppStore(
     (s) => s.reportVisibleGitHubPRRefreshCandidates
@@ -4395,6 +4397,51 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                                 'Rename group'
                               )}
                             </DropdownMenuItem>
+                            {row.projectGroup?.parentPath ? (
+                              <DropdownMenuItem
+                                onSelect={async () => {
+                                  if (!row.projectGroup?.id) {
+                                    return
+                                  }
+                                  const groupId = row.projectGroup.id
+                                  const groupName = row.label
+                                  try {
+                                    const result = await rescanProjectGroup(groupId)
+                                    if (!result) {
+                                      return
+                                    }
+                                    if (result.importedCount > 0) {
+                                      toast.success(
+                                        translate(
+                                          'auto.components.sidebar.WorktreeList.rescanSuccess',
+                                          'Found and imported {{count}} new project(s) in {{name}}',
+                                          {
+                                            count: result.importedCount,
+                                            name: groupName
+                                          }
+                                        )
+                                      )
+                                    } else {
+                                      toast.info(
+                                        translate(
+                                          'auto.components.sidebar.WorktreeList.rescanNoNew',
+                                          'No new projects found in {{name}}',
+                                          { name: groupName }
+                                        )
+                                      )
+                                    }
+                                  } catch {
+                                    // Error already handled in store
+                                  }
+                                }}
+                              >
+                                <RefreshCw className="mr-2 size-3.5" />
+                                {translate(
+                                  'auto.components.sidebar.WorktreeList.refreshProjects',
+                                  'Refresh projects'
+                                )}
+                              </DropdownMenuItem>
+                            ) : null}
                             <DropdownMenuItem
                               variant="destructive"
                               onSelect={() => {

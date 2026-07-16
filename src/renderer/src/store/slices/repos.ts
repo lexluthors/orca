@@ -15,6 +15,7 @@ import type {
   ProjectHostSetup,
   FolderWorkspace,
   ProjectGroupImportResult,
+  ProjectGroupRescanResult,
   NestedRepoScanResult,
   ProjectHostSetupCloneArgs,
   ProjectHostSetupCreateArgs,
@@ -1432,6 +1433,7 @@ export type RepoSlice = {
     scanId?: string
     mode: 'group' | 'separate'
   }) => Promise<ProjectGroupImportResult | null>
+  rescanProjectGroup: (groupId: string) => Promise<ProjectGroupRescanResult | null>
   createProjectGroup: (name: string) => Promise<ProjectGroup | null>
   createFolderWorkspace: (
     args: {
@@ -2025,6 +2027,36 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
       console.error('Failed to import nested repos:', err)
       toast.error(
         translate('auto.store.slices.repos.6d3318e813', 'Failed to import repositories'),
+        {
+          description: err instanceof Error ? err.message : String(err)
+        }
+      )
+      return null
+    }
+  },
+
+  rescanProjectGroup: async (groupId) => {
+    try {
+      const target = getActiveRuntimeTarget(get().settings)
+      const result =
+        target.kind === 'local'
+          ? await window.api.projectGroups.rescan({ groupId })
+          : await callRuntimeRpc<ProjectGroupRescanResult>(
+              target,
+              'projectGroup.rescan',
+              { groupId },
+              { timeoutMs: 30_000 }
+            )
+      await get().fetchProjectGroups()
+      await get().fetchRepos()
+      return result
+    } catch (err) {
+      console.error('Failed to rescan project group:', err)
+      toast.error(
+        translate(
+          'auto.store.slices.repos.rescanProjectGroupFailed',
+          'Failed to refresh project group'
+        ),
         {
           description: err instanceof Error ? err.message : String(err)
         }

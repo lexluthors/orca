@@ -14,6 +14,7 @@ import type {
   ProjectGroup,
   FolderWorkspace,
   ProjectGroupImportResult,
+  ProjectGroupRescanResult,
   ProjectUpdateArgs,
   ProjectHostSetupCreateArgs,
   ProjectHostSetupCreateResult,
@@ -698,6 +699,10 @@ const ProjectGroupMoveProjectArgs = z.object({
   order: z.number().finite().optional()
 })
 
+const ProjectGroupRescanArgs = z.object({
+  groupId: z.string().min(1)
+})
+
 const ProjectHostSetupExistingFolderIpcArgs = z.object({
   projectId: z.string().min(1),
   hostId: z.string().min(1),
@@ -1144,6 +1149,7 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
   ipcMain.removeHandler('projectGroups:scanNested')
   ipcMain.removeHandler('projectGroups:cancelNestedScan')
   ipcMain.removeHandler('projectGroups:importNested')
+  ipcMain.removeHandler('projectGroups:rescan')
   ipcMain.removeHandler('folderWorkspaces:list')
   ipcMain.removeHandler('folderWorkspaces:create')
   ipcMain.removeHandler('folderWorkspaces:update')
@@ -1643,6 +1649,130 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
         importedCount,
         alreadyKnownCount,
         failedCount
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'projectGroups:rescan',
+    async (_event, rawArgs: unknown): Promise<ProjectGroupRescanResult> => {
+      const args = parseProjectGroupIpcArgs(
+        ProjectGroupRescanArgs,
+        rawArgs,
+        'invalid_project_group_rescan_args'
+      )
+      const group = store.getProjectGroups().find((g) => g.id === args.groupId)
+      if (!group) {
+        throw new Error('project_group_not_found')
+      }
+      if (!group.parentPath) {
+        throw new Error('project_group_has_no_parent_path')
+      }
+      // Scan the parent directory for git repos
+      const scan = await scanNestedReposForIpc({
+        path: group.parentPath,
+        connectionId: group.connectionId ?? undefined,
+        options: { timeoutMs: 15_000 }
+      })
+      // Build a Set of normalized paths already known in the store
+      const existingRepoPaths = new Set<string>()
+      for (const repo of store.getRepos()) {
+        if ((repo.connectionId ?? null) === (group.connectionId ?? null)) {
+          existingRepoPaths.add(normalizeRuntimePathForComparison(repo.path))
+        }
+      }
+      // Filter to only new (not-yet-imported) candidates
+      const newCandidates = scan.repos.filter(
+        (candidate) => !existingRepoPaths.has(normalizeRuntimePathForComparison(candidate.path))
+      )
+      if (newCandidates.length === 0) {
+        return {
+          importedCount: 0,
+          alreadyKnownCount: scan.repos.length,
+          failedCount: 0,
+          scannedRepoCount: scan.repos.length,
+          newRepoCount: 0
+        }
+      }
+      // Import only new repos directly into the existing group
+      const importedProjectIdsByRepoPath = new Map<string, string>()
+      const importTargetResolver = createNestedRepoImportTargetResolver()
+      let importedCount = 0
+      let failedCount = 0
+      for (const [index, candidate] of newCandidates.entries()) {
+        try {
+          let importRepoPath = candidate.path
+          if (group.connectionId) {
+            const gitProvider = getSshGitProvider(group.connectionId)
+            const check = gitProvider ? await gitProvider.isGitRepoAsync(candidate.path) : null
+            if (!gitProvider || !check?.isRepo) {
+              failedCount++
+              continue
+            }
+            importRepoPath = await importTargetResolver.resolveSsh(candidate.path, gitProvider)
+          } else if (!isGitRepo(candidate.path)) {
+            failedCount++
+            continue
+          } else {
+            importRepoPath = await importTargetResolver.resolveLocal(candidate.path)
+          }
+          const normalizedImportRepoPath = normalizeRuntimePathForComparison(importRepoPath)
+          if (importedProjectIdsByRepoPath.has(normalizedImportRepoPath)) {
+            continue
+          }
+          // Double-check: the resolved import target might already be known
+          // even if the scanned candidate path wasn't (e.g. linked worktree
+          // resolving to an already-imported main worktree).
+          if (existingRepoPaths.has(normalizedImportRepoPath)) {
+            continue
+          }
+          const detected = await detectRepoIconAndUpstream({
+            repoPath: importRepoPath,
+            kind: 'git',
+            connectionId: group.connectionId ?? undefined
+          })
+          const repo: Repo = {
+            id: randomUUID(),
+            path: importRepoPath,
+            displayName: getRepoName(importRepoPath),
+            badgeColor: DEFAULT_REPO_BADGE_COLOR,
+            ...detected,
+            addedAt: Date.now(),
+            kind: 'git',
+            ...(group.connectionId ? { connectionId: group.connectionId } : {}),
+            externalWorktreeVisibility: 'hide',
+            externalWorktreeVisibilityLegacy: false,
+            projectHostSetupMethod: 'imported-existing-folder',
+            projectGroupId: group.id,
+            projectGroupOrder: index
+          }
+          store.addRepo(repo)
+          await prepareLocalWorktreeRootForRepo(store, repo)
+          if (group.connectionId) {
+            getActiveMultiplexer(group.connectionId)?.notify('session.registerRoot', {
+              rootPath: importRepoPath
+            })
+          }
+          importedProjectIdsByRepoPath.set(normalizedImportRepoPath, repo.id)
+          importedCount++
+          emitRepoAdded('folder_picker', false, true)
+        } catch (error) {
+          console.error(
+            'Failed to import repo during rescan:',
+            candidate.path,
+            sanitizeNestedRepoImportError('Failed to import during rescan', error)
+          )
+          failedCount++
+        }
+      }
+      invalidateAuthorizedRootsCache()
+      notifyReposChanged(mainWindow)
+      return {
+        importedCount,
+        alreadyKnownCount: scan.repos.length - newCandidates.length,
+        failedCount,
+        scannedRepoCount: scan.repos.length,
+        newRepoCount: importedCount
       }
     }
   )
