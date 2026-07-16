@@ -25,6 +25,7 @@ export function buildNotificationOptions(args: NotificationDispatchRequest): {
   body: string
   silent?: boolean
   sound?: string
+  timeoutType?: 'default' | 'never'
 } {
   if (args.source === 'terminal-bell') {
     return {
@@ -43,7 +44,8 @@ export function buildNotificationOptions(args: NotificationDispatchRequest): {
   if (args.source === 'todo-due') {
     return {
       title: args.title ?? 'Todo Reminder',
-      body: args.body ?? 'A todo item is due soon.'
+      body: args.body ?? 'A todo item is due soon.',
+      timeoutType: 'never'
     }
   }
 

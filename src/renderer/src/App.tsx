@@ -105,6 +105,7 @@ import {
   setRuntimeGraphSyncEnabled
 } from './runtime/sync-runtime-graph'
 import { useWebSessionTabsSync } from './runtime/web-session-tabs-sync'
+import { startTodoNotificationMonitor } from './components/work-panel/useTodoNotifications'
 import { useGlobalFileDrop } from './hooks/useGlobalFileDrop'
 import { useRadixBodyPointerEventsRecovery } from './hooks/useRadixBodyPointerEventsRecovery'
 import { registerUpdaterBeforeUnloadBypass } from './lib/updater-beforeunload'
@@ -412,6 +413,7 @@ function App(): React.JSX.Element {
   const clearUnreadDockBadge = useUnreadDockBadge()
   useRadixBodyPointerEventsRecovery()
   useWebSessionTabsSync()
+  startTodoNotificationMonitor()
   const [floatingTerminalOpen, setFloatingTerminalOpen] = useState(false)
   const floatingWorkspaceTourInteractionSnapshotRef = useRef<{
     wasPreviouslyInteracted?: boolean

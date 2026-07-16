@@ -7,12 +7,12 @@ export { WorkListPanel } from './WorkListPanel'
 export { MemoEditor } from './MemoEditor'
 export { TodoEditor } from './TodoEditor'
 export { useWorkStore, useMergedWorkItems, useTodoCounts } from './use-work-store'
-export { useTodoNotifications } from './useTodoNotifications'
+export { useTodoNotifications, startTodoNotificationMonitor } from './useTodoNotifications'
 export type {
   WorkItem,
   WorkItemType,
   WorkItemPriority,
   WorkPanelTab,
   TodoFilter,
-  WorkItemSort,
+  WorkItemSort
 } from './types'

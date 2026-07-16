@@ -1,81 +1,125 @@
 /**
- * Hook that monitors todos for upcoming due dates and triggers system notifications.
- * Checks every 30 seconds. Notifies when a todo is due within 30 minutes.
- * Uses the app's existing notification IPC (notifications:dispatch) which
- * routes through Electron's native Notification class.
+ * Todo due-date notification monitor.
+ *
+ * Runs a singleton interval that checks every 30 seconds for todos
+ * approaching their due date and dispatches system notifications via
+ * Electron's Notification IPC. Repeats every 5 minutes until the todo
+ * is completed or falls outside the notification window (30 min before
+ * due → 30 min after overdue).
+ *
+ * Designed to be started from the App root via startTodoNotificationMonitor()
+ * so monitoring runs regardless of which sidebar view is active. Uses
+ * useWorkStore.getState() for imperative store access — no React hooks
+ * are called, so this adds zero hook calls to the App component and is
+ * safe across Vite HMR boundary changes.
  */
 
-import { useEffect, useRef } from 'react'
 import { useWorkStore } from './use-work-store'
 
 const CHECK_INTERVAL_MS = 30_000 // Check every 30 seconds
 const NOTIFY_THRESHOLD_MS = 30 * 60 * 1000 // Notify 30 minutes before due
-const OVERDUE_WINDOW_MS = 5 * 60 * 1000 // Also notify if overdue within last 5 min
+const OVERDUE_WINDOW_MS = 30 * 60 * 1000 // Keep notifying until 30 min overdue
+const REPEAT_INTERVAL_MS = 5 * 60 * 1000 // Re-notify every 5 minutes
+
+let monitorStarted = false
+// Tracks last notification timestamp per todo ID for repeat logic
+const lastNotifiedAt = new Map<string, number>()
 
 function dispatchNotification(args: Record<string, unknown>): void {
-  const api = (window as unknown as { api?: { notifications?: { dispatch: (a: Record<string, unknown>) => Promise<unknown> } } }).api
+  const api = (
+    window as unknown as {
+      api?: {
+        notifications?: {
+          dispatch: (a: Record<string, unknown>) => Promise<unknown>
+        }
+      }
+    }
+  ).api
   api?.notifications?.dispatch(args).catch(() => {
     // Silent fail — notification delivery is best-effort
   })
 }
 
-export function useTodoNotifications(): void {
-  const items = useWorkStore((s) => s.items)
-  const dismissedNotifications = useWorkStore((s) => s.dismissedNotifications)
-  const addNotification = useWorkStore((s) => s.addNotification)
+function check(): void {
+  const now = Date.now()
+  const { items } = useWorkStore.getState()
+  const activeIds = new Set<string>()
 
-  const itemsRef = useRef(items)
-  const dismissedRef = useRef(dismissedNotifications)
-  const addNotificationRef = useRef(addNotification)
-
-  useEffect(() => {
-    itemsRef.current = items
-    dismissedRef.current = dismissedNotifications
-    addNotificationRef.current = addNotification
-  })
-
-  useEffect(() => {
-    function check() {
-      const now = Date.now()
-      const allItems = itemsRef.current
-      const dismissed = new Set(dismissedRef.current)
-
-      for (const item of allItems) {
-        if (item.type !== 'todo') continue
-        if (item.completed) continue
-        if (!item.dueAt) continue
-        if (dismissed.has(item.id)) continue
-
-        const dueTime = new Date(item.dueAt).getTime()
-        const timeLeft = dueTime - now
-
-        if (timeLeft <= NOTIFY_THRESHOLD_MS && timeLeft > -OVERDUE_WINDOW_MS) {
-          const overdue = timeLeft < 0
-          const timeLabel = overdue
-            ? `Overdue by ${formatTimeDiff(Math.abs(timeLeft))}`
-            : `Due in ${formatTimeDiff(timeLeft)}`
-
-          dispatchNotification({
-            source: 'todo-due',
-            notificationId: item.id,
-            title: overdue ? '⚠️ Todo Overdue' : '🔔 Todo Due Soon',
-            body: `${item.title}\n${timeLabel}`,
-          })
-
-          addNotificationRef.current(item.id)
-        }
-      }
+  for (const item of items) {
+    if (item.type !== 'todo') {
+      continue
+    }
+    if (item.completed) {
+      continue
+    }
+    if (!item.dueAt) {
+      continue
     }
 
-    check()
-    const timer = setInterval(check, CHECK_INTERVAL_MS)
-    return () => clearInterval(timer)
-  }, [])
+    const dueTime = new Date(item.dueAt).getTime()
+    const timeLeft = dueTime - now
+
+    // In the notification window: 30 min before due → 30 min after overdue
+    if (timeLeft <= NOTIFY_THRESHOLD_MS && timeLeft > -OVERDUE_WINDOW_MS) {
+      activeIds.add(item.id)
+
+      const lastSent = lastNotifiedAt.get(item.id) ?? 0
+      const elapsed = now - lastSent
+
+      // Notify on first entry, then repeat every REPEAT_INTERVAL_MS
+      if (elapsed >= REPEAT_INTERVAL_MS) {
+        const overdue = timeLeft < 0
+        const timeLabel = overdue
+          ? `Overdue by ${formatTimeDiff(Math.abs(timeLeft))}`
+          : `Due in ${formatTimeDiff(timeLeft)}`
+
+        dispatchNotification({
+          source: 'todo-due',
+          notificationId: item.id,
+          title: overdue ? '⚠️ Todo Overdue' : '🔔 Todo Due Soon',
+          body: `${item.title}\n${timeLabel}`
+        })
+
+        lastNotifiedAt.set(item.id, now)
+      }
+    }
+  }
+
+  // Clean up entries for items no longer in the notification window
+  for (const id of lastNotifiedAt.keys()) {
+    if (!activeIds.has(id)) {
+      lastNotifiedAt.delete(id)
+    }
+  }
+}
+
+/**
+ * Start the singleton todo notification monitor.
+ * Safe to call multiple times — subsequent calls are no-ops.
+ * No React hooks are called; uses Zustand store imperatively.
+ */
+export function startTodoNotificationMonitor(): void {
+  if (monitorStarted) {
+    return
+  }
+  monitorStarted = true
+  check()
+  setInterval(check, CHECK_INTERVAL_MS)
+}
+
+/**
+ * @deprecated Use startTodoNotificationMonitor() at the App root instead.
+ * Kept for backward compatibility — delegates to the singleton monitor.
+ */
+export function useTodoNotifications(): void {
+  startTodoNotificationMonitor()
 }
 
 function formatTimeDiff(ms: number): string {
   const totalMinutes = Math.round(ms / 60_000)
-  if (totalMinutes < 60) return `${totalMinutes} min`
+  if (totalMinutes < 60) {
+    return `${totalMinutes} min`
+  }
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
   return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
