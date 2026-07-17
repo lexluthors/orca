@@ -382,7 +382,19 @@ export function resolveSourceControlCompareBaseRef(input: {
   repoBaseRef?: string | null
   upstreamName?: string | null
   fallbackBaseRef?: string | null
+  baseRefMode?: 'auto' | 'remote-same-branch'
+  branchName?: string | null
+  remoteName?: string | null
 }): string | null {
+  // Why: remote-same-branch mode takes priority — the user explicitly opted in
+  // to comparing against origin/<current-branch>, regardless of other settings.
+  if (
+    input.baseRefMode === 'remote-same-branch' &&
+    input.branchName?.trim() &&
+    input.remoteName?.trim()
+  ) {
+    return `${input.remoteName.trim()}/${input.branchName.trim()}`
+  }
   if (!input.enabled) {
     return input.fallbackBaseRef?.trim() || null
   }
@@ -1486,12 +1498,17 @@ function SourceControlInner(): React.JSX.Element {
   })
   // Why: the compare/diff view uses this base; the PR/rebase merge target keeps
   // using effectiveBaseRef. When the setting is off, this equals effectiveBaseRef.
+  const baseRefMode = activeWorktree?.baseRefMode ?? 'auto'
+  const remoteName = activeRepo?.gitRemoteIdentity?.remoteName ?? 'origin'
   const compareBaseRef = resolveSourceControlCompareBaseRef({
     enabled: settings?.sourceControlCompareAgainstUpstream ?? false,
     worktreeBaseRef: normalizedWorktreeBaseRef,
     repoBaseRef: normalizedRepoBaseRef,
     upstreamName: remoteStatus?.upstreamName ?? null,
-    fallbackBaseRef: effectiveBaseRef
+    fallbackBaseRef: effectiveBaseRef,
+    baseRefMode,
+    branchName,
+    remoteName
   })
   const pickerBaseRef = resolveSourceControlPickerBaseRef({
     pinnedBaseRef,
@@ -4512,6 +4529,59 @@ function SourceControlInner(): React.JSX.Element {
     })
   }, [settings, sourceControlViewMode, updateSettings])
 
+  // Why: toggle between default compare base and remote same-named branch.
+  // Persists the choice per-worktree so it survives restarts.
+  const handleToggleRemoteSameBranch = useCallback(async () => {
+    if (!activeWorktreeId || !branchName) {
+      return
+    }
+    const baseRefBeforeRemotePin = activeWorktree?.baseRefBeforeRemotePin ?? null
+
+    if (baseRefMode === 'remote-same-branch') {
+      // Switch back: restore the original baseRef
+      await updateWorktreeMeta(activeWorktreeId, {
+        baseRefMode: 'auto',
+        baseRef: baseRefBeforeRemotePin ?? undefined,
+        baseRefBeforeRemotePin: undefined
+      })
+      window.setTimeout(() => void refreshBranchCompareRef.current(), 0)
+    } else {
+      // Switch to remote same-named branch
+      const exists = await window.api.worktrees.checkRemoteRef({
+        worktreeId: activeWorktreeId,
+        remote: remoteName,
+        branch: branchName
+      })
+
+      if (!exists) {
+        toast.error(
+          translate(
+            'auto.components.right.sidebar.SourceControl.remote_branch_not_found',
+            'Remote branch not found: {{value0}}/{{value1}}',
+            { value0: remoteName, value1: branchName }
+          )
+        )
+        return
+      }
+
+      // Save current baseRef, switch to remote same-named branch
+      await updateWorktreeMeta(activeWorktreeId, {
+        baseRefMode: 'remote-same-branch',
+        baseRefBeforeRemotePin: pinnedBaseRef ?? undefined,
+        baseRef: `${remoteName}/${branchName}`
+      })
+      window.setTimeout(() => void refreshBranchCompareRef.current(), 0)
+    }
+  }, [
+    activeWorktreeId,
+    activeWorktree,
+    branchName,
+    baseRefMode,
+    remoteName,
+    pinnedBaseRef,
+    updateWorktreeMeta
+  ])
+
   // Clear selection on worktree or tab change
   useEffect(() => {
     clearSelection()
@@ -5583,6 +5653,8 @@ function SourceControlInner(): React.JSX.Element {
           compareBaseRef={compareBaseRef}
           upstreamStatus={remoteStatus}
           manualReviewUrl={manualReviewUrl}
+          baseRefMode={baseRefMode}
+          onToggleRemoteSameBranch={handleToggleRemoteSameBranch}
         />
 
         {detachedHeadDisplay && (

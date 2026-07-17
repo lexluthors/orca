@@ -41,6 +41,8 @@ type SourceControlHeaderToolbarProps = {
   compareBaseRef: string | null
   upstreamStatus?: GitUpstreamStatus
   manualReviewUrl?: string | null
+  baseRefMode?: 'auto' | 'remote-same-branch'
+  onToggleRemoteSameBranch?: () => void
 }
 
 function HostedReviewToolbarLink({
@@ -145,7 +147,9 @@ export function SourceControlHeaderToolbar({
   branchSummary,
   compareBaseRef,
   upstreamStatus,
-  manualReviewUrl
+  manualReviewUrl,
+  baseRefMode,
+  onToggleRemoteSameBranch
 }: SourceControlHeaderToolbarProps): React.JSX.Element {
   const filterInputRef = useRef<HTMLInputElement>(null)
   const normalizedFilter = filterQuery.trim()
@@ -293,6 +297,8 @@ export function SourceControlHeaderToolbar({
             manualReviewUrl={manualReviewUrl}
             onChangeBaseRef={onChangeBaseRef}
             onRetry={onRefreshBranchCompare}
+            baseRefMode={baseRefMode}
+            onToggleRemoteSameBranch={onToggleRemoteSameBranch}
           />
         </div>
       ) : null}

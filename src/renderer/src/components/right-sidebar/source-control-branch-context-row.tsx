@@ -1,5 +1,5 @@
 import React from 'react'
-import { ExternalLink, Loader2, RefreshCw } from 'lucide-react'
+import { ExternalLink, GitBranch, Loader2, RefreshCw } from 'lucide-react'
 import type { GitBranchCompareSummary, GitUpstreamStatus } from '../../../../shared/types'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
@@ -31,6 +31,46 @@ function BaseRefButton({
     >
       {baseRef}
     </button>
+  )
+}
+
+function RemoteSameBranchToggleButton({
+  active,
+  onClick
+}: {
+  active: boolean
+  onClick: () => void
+}): React.JSX.Element {
+  const label = active
+    ? translate(
+        'auto.components.right.sidebar.SourceControl.toggle_remote_branch_off',
+        'Switch back to default compare base'
+      )
+    : translate(
+        'auto.components.right.sidebar.SourceControl.toggle_remote_branch_on',
+        'Compare against remote same-named branch'
+      )
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'inline-flex size-5 shrink-0 items-center justify-center rounded-sm transition-colors',
+            active
+              ? 'bg-accent text-accent-foreground'
+              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+          )}
+          onClick={onClick}
+          aria-label={label}
+        >
+          <GitBranch className="size-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={6}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -88,7 +128,9 @@ export function SourceControlBranchContextRow({
   upstreamStatus,
   manualReviewUrl,
   onChangeBaseRef,
-  onRetry
+  onRetry,
+  baseRefMode,
+  onToggleRemoteSameBranch
 }: {
   summary: GitBranchCompareSummary | null
   compareBaseRef: string | null
@@ -96,6 +138,8 @@ export function SourceControlBranchContextRow({
   manualReviewUrl?: string | null
   onChangeBaseRef: () => void
   onRetry: () => void
+  baseRefMode?: 'auto' | 'remote-same-branch'
+  onToggleRemoteSameBranch?: () => void
 }): React.JSX.Element | null {
   const displayedBaseRef = resolveSourceControlDisplayedBaseRef(summary, compareBaseRef)
   if (!shouldShowSourceControlBranchContextRow(summary, compareBaseRef) || !displayedBaseRef) {
@@ -106,6 +150,8 @@ export function SourceControlBranchContextRow({
     'auto.components.right.sidebar.SourceControl.493f963029',
     'Change base ref'
   )
+  const remoteSameBranchActive = baseRefMode === 'remote-same-branch'
+  const showToggleButton = Boolean(onToggleRemoteSameBranch)
 
   if (!summary || summary.status === 'loading') {
     return (
@@ -121,6 +167,12 @@ export function SourceControlBranchContextRow({
             title={changeBaseTitle}
           />
         </span>
+        {showToggleButton ? (
+          <RemoteSameBranchToggleButton
+            active={remoteSameBranchActive}
+            onClick={onToggleRemoteSameBranch!}
+          />
+        ) : null}
         <ManualReviewLinkButton url={manualReviewUrl} />
       </div>
     )
@@ -136,6 +188,12 @@ export function SourceControlBranchContextRow({
             title={changeBaseTitle}
           />
         </span>
+        {showToggleButton ? (
+          <RemoteSameBranchToggleButton
+            active={remoteSameBranchActive}
+            onClick={onToggleRemoteSameBranch!}
+          />
+        ) : null}
         <span className="min-w-0 flex-1 truncate" title={summary.errorMessage ?? undefined}>
           {summary.errorMessage ??
             translate(
@@ -172,6 +230,12 @@ export function SourceControlBranchContextRow({
             title={changeBaseTitle}
           />
         </span>
+        {showToggleButton ? (
+          <RemoteSameBranchToggleButton
+            active={remoteSameBranchActive}
+            onClick={onToggleRemoteSameBranch!}
+          />
+        ) : null}
       </div>
       {stats.length > 0 ? (
         <span className="inline-flex shrink-0 items-center gap-1.5">

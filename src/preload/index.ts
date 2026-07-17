@@ -717,6 +717,8 @@ const api = {
 
     updateMeta: (args) => ipcRenderer.invoke('worktrees:updateMeta', args),
 
+    checkRemoteRef: (args) => ipcRenderer.invoke('worktrees:checkRemoteRef', args),
+
     listLineage: () => ipcRenderer.invoke('worktrees:listLineage'),
 
     updateLineage: (args) => ipcRenderer.invoke('worktrees:updateLineage', args),

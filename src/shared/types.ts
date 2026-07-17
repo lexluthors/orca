@@ -528,6 +528,10 @@ export type Worktree = {
   sparsePresetId?: string
   /** Intended create base for stale-base probes. Persisted metadata, not UI drift state. */
   baseRef?: string
+  /** Compare base mode: 'auto' = default policy; 'remote-same-branch' = force remote same-named branch. */
+  baseRefMode?: 'auto' | 'remote-same-branch'
+  /** Original baseRef saved before switching to remote-same-branch mode, for toggling back. */
+  baseRefBeforeRemotePin?: string
   /** Remote/branch Orca should publish review commits to when it created this worktree. */
   pushTarget?: GitPushTarget
   /** Path-derived worktree ids this worktree had before folder renames. */
@@ -627,6 +631,10 @@ export type WorktreeMeta = {
   sparsePresetId?: string
   /** Intended create base for stale-base probes. Persisted metadata, not UI drift state. */
   baseRef?: string
+  /** Compare base mode: 'auto' = default policy; 'remote-same-branch' = force remote same-named branch. */
+  baseRefMode?: 'auto' | 'remote-same-branch'
+  /** Original baseRef saved before switching to remote-same-branch mode, for toggling back. */
+  baseRefBeforeRemotePin?: string
   /** True when Orca checked out a pre-existing local branch that delete must not prune. */
   preserveBranchOnDelete?: boolean
   /** See {@link Worktree.pushTarget}. Persisted so refreshed worktree lists keep the target. */

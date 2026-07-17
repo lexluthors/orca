@@ -1543,6 +1543,15 @@ function createWorktreesApi(): NonNullable<Partial<PreloadApi>['worktrees']> {
         })
       ).worktree
     },
+    checkRemoteRef: async ({ worktreeId, remote, branch }) => {
+      // For web client, we delegate to the runtime RPC which has access to git
+      const result = await callRuntimeResult<{ exists: boolean }>('worktree.checkRemoteRef', {
+        worktree: toRuntimeWorktreeSelector(worktreeId),
+        remote,
+        branch
+      })
+      return result.exists
+    },
     listLineage: async () =>
       await callRuntimeResult<{
         lineage: Record<string, WorktreeLineage>

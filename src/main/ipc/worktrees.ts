@@ -1005,6 +1005,7 @@ export function registerWorktreeHandlers(
   ipcMain.removeHandler('worktrees:forgetLocal')
   ipcMain.removeHandler('worktrees:forceDeletePreservedBranch')
   ipcMain.removeHandler('worktrees:updateMeta')
+  ipcMain.removeHandler('worktrees:checkRemoteRef')
   ipcMain.removeHandler('worktrees:listLineage')
   ipcMain.removeHandler('worktrees:updateLineage')
   ipcMain.removeHandler('worktrees:persistSortOrder')
@@ -2110,6 +2111,34 @@ export function registerWorktreeHandlers(
         runtime.notifyWorktreesChangedForRemoteClients(getRepoIdFromWorktreeId(args.worktreeId))
       }
       return meta
+    }
+  )
+
+  ipcMain.handle(
+    'worktrees:checkRemoteRef',
+    async (_event, args: { worktreeId: string; remote: string; branch: string }) => {
+      const { repoId, worktreePath } = parseWorktreeId(args.worktreeId)
+      const repo = store.getRepo(repoId)
+      if (!repo || isFolderRepo(repo)) {
+        return false
+      }
+      const qualifiedRef = `refs/remotes/${args.remote}/${args.branch}^{commit}`
+      try {
+        if (repo.connectionId) {
+          const provider = getSshGitProvider(repo.connectionId)
+          if (!provider) {
+            return false
+          }
+          await provider.exec(['rev-parse', '--verify', '--quiet', qualifiedRef], repo.path)
+        } else {
+          await gitExecFileAsync(['rev-parse', '--verify', '--quiet', qualifiedRef], {
+            cwd: worktreePath
+          })
+        }
+        return true
+      } catch {
+        return false
+      }
     }
   )
 
