@@ -327,6 +327,35 @@ describe('LocalPtyProvider', () => {
       expect(spawnMock).toHaveBeenCalledOnce()
     })
 
+    it('coalesces a concurrent same-session-id spawn before launching a redundant shell (F3)', async () => {
+      spawnMock.mockClear()
+      const procA = { ...mockProc, pid: 1001 }
+      spawnMock.mockReturnValueOnce(procA)
+
+      // Hold both spawns past the existence check and inside the preflight so they
+      // race to register the same id; release only after both are parked.
+      let releasePreflight!: () => void
+      prepareMacosTccLoginShellMock.mockReturnValue(
+        new Promise<void>((resolve) => {
+          releasePreflight = resolve
+        })
+      )
+
+      const spawnA = provider.spawn({ cols: 80, rows: 24, sessionId: 'race-session' })
+      const spawnB = provider.spawn({ cols: 132, rows: 44, sessionId: 'race-session' })
+      await vi.waitFor(() => expect(prepareMacosTccLoginShellMock).toHaveBeenCalledTimes(2))
+      releasePreflight()
+
+      const [a, b] = await Promise.all([spawnA, spawnB])
+      // The winner owns the tracked PTY; the loser attaches to it, not a second one.
+      expect(a.isReattach).toBeUndefined()
+      expect(b.isReattach).toBe(true)
+      expect(b.pid).toBe(procA.pid)
+      expect(provider.getPtyProcess('race-session')).toBe(procA)
+      expect(spawnMock).toHaveBeenCalledOnce()
+      expect(procA.resize).toHaveBeenCalledWith(132, 44)
+    })
+
     it('calls node-pty spawn with correct args', async () => {
       await provider.spawn({ cols: 120, rows: 40, cwd: '/tmp' })
       expect(spawnMock).toHaveBeenCalledWith(
@@ -1580,6 +1609,47 @@ describe('LocalPtyProvider', () => {
       onDataCb('hello world')
 
       expect(dataHandler).toHaveBeenCalledWith({ id, data: 'hello world' })
+    })
+
+    it('classifies startup queries before runtime and public data listeners', async () => {
+      const runtimeData = vi.fn()
+      const dataHandler = vi.fn()
+      provider.configure({ onData: runtimeData })
+      provider.onData(dataHandler)
+      const { id } = await provider.spawn({
+        cols: 80,
+        rows: 24,
+        startupIngress: {
+          colors: { foreground: '#2e3434', background: '#ffffff' },
+          deadlineMs: 5_000,
+          echoProjection: 'windows-conpty-esc-stripped'
+        }
+      })
+      const onDataCb = mockProc.onData.mock.calls[0][0]
+      const query = '\x1b]10;?\x07'
+      const echo = ']10;rgb:2e2e/3434/3434\\'
+
+      onDataCb(query)
+      onDataCb(echo)
+      onDataCb('prompt')
+
+      expect(mockProc.write).toHaveBeenCalledWith('\x1b]10;rgb:2e2e/3434/3434\x1b\\')
+      expect(runtimeData.mock.calls.map((call) => call.slice(1))).toEqual([
+        ['', expect.any(Number), query.length, true],
+        ['', expect.any(Number), echo.length, true],
+        ['prompt', expect.any(Number)]
+      ])
+      expect(dataHandler.mock.calls.map(([payload]) => payload)).toEqual([
+        { id, data: '', sequenceChars: query.length, seq: query.length, transformed: true },
+        {
+          id,
+          data: '',
+          sequenceChars: echo.length,
+          seq: query.length + echo.length,
+          transformed: true
+        },
+        { id, data: 'prompt' }
+      ])
     })
 
     it('notifies exit listeners when PTY exits', async () => {
