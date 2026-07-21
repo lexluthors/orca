@@ -70,6 +70,7 @@ export function createRemoteRuntimePtyTransport(
     launchConfig,
     launchToken,
     launchAgent,
+    terminalColorQueryReplies,
     worktreeId,
     tabId,
     leafId,
@@ -172,7 +173,9 @@ export function createRemoteRuntimePtyTransport(
     const activated = await callRuntime<RuntimeMobileSessionTabsResult>('session.tabs.activate', {
       worktree,
       tabId: hostTabId,
-      ...(leafId ? { leafId } : {})
+      ...(leafId ? { leafId } : {}),
+      notifyClients: false,
+      navigation: 'caller'
     })
     const immediate = findReadyHostSessionHandle(activated, hostTabId)
     if (immediate) {
@@ -791,6 +794,7 @@ export function createRemoteRuntimePtyTransport(
           ...(launchConfigToSend !== undefined ? { launchConfig: launchConfigToSend } : {}),
           ...(launchTokenToSend !== undefined ? { launchToken: launchTokenToSend } : {}),
           ...(launchAgentToSend !== undefined ? { launchAgent: launchAgentToSend } : {}),
+          ...(terminalColorQueryReplies ? { terminalColorQueryReplies } : {}),
           tabId,
           leafId,
           focus: false,

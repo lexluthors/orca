@@ -14,6 +14,7 @@ import { extractLastOsc7Uri, extractOscScanTail } from '../daemon/osc7-uri-extra
 import { parseFileUriPathParts } from '../daemon/osc7-file-uri'
 import type { AgentStatus } from '../../shared/agent-detection'
 import type { TerminalOscLinkRange } from '../../shared/terminal-osc-link-ranges'
+import type { TerminalOscColorQueryReplyColors } from '../../shared/terminal-osc-color-reply'
 import {
   createTerminalTitleTracker,
   stripBrailleSpinnerGlyphs,
@@ -154,6 +155,11 @@ import {
 import type { SleepingAgentLaunchConfig } from '../../shared/agent-session-resume'
 import type { RuntimeClientEvent } from '../../shared/runtime-client-events'
 import { toRuntimeActivateWorktreeEvent } from '../../shared/runtime-client-events'
+import {
+  navigationTargetsClients,
+  navigationTargetsHost,
+  type RuntimeNavigationTarget
+} from '../../shared/runtime-navigation'
 import type { SshConnectionState } from '../../shared/ssh-types'
 import { closeTerminalTabInWorkspaceSession } from '../../shared/workspace-session-terminal-tab-close'
 import type {
@@ -370,6 +376,12 @@ import { RuntimeEmulatorCommands, setEmulatorBridge } from './orca-runtime-emula
 import type { EmulatorBridge } from '../emulator/emulator-bridge'
 import { RuntimeFileCommands } from './orca-runtime-files'
 import { RuntimeGitCommands } from './orca-runtime-git'
+import {
+  activateClientSessionTabSelection,
+  ClientSessionTabSelectionStore,
+  deriveClientSessionTabSelection,
+  projectClientSessionTabSelection
+} from './client-session-tab-selection'
 import type { PtyProviderBufferSnapshot } from '../providers/types'
 import { ClaudeAgentTeamsService } from './claude-agent-teams-service'
 import type {
@@ -759,6 +771,7 @@ import {
 } from './terminal-model-query-authority'
 import {
   getTerminalViewAttributes,
+  getTerminalViewColorQueryReplyColors,
   registerTerminalViewAttributesApplier
 } from './terminal-view-attribute-store'
 import { killAllProcessesForWorktree, teardownRpcDeadline } from './worktree-teardown'
@@ -900,6 +913,7 @@ type RuntimeStore = {
     agentDefaultArgs?: GlobalSettings['agentDefaultArgs']
     agentDefaultEnv?: GlobalSettings['agentDefaultEnv']
     terminalWindowsShell?: GlobalSettings['terminalWindowsShell']
+    floatingTerminalEnabled?: GlobalSettings['floatingTerminalEnabled']
     agentStatusHooksEnabled?: GlobalSettings['agentStatusHooksEnabled']
     defaultTaskSource?: GlobalSettings['defaultTaskSource']
     defaultTaskViewPreset?: GlobalSettings['defaultTaskViewPreset']
@@ -1077,6 +1091,7 @@ type TerminalCreateOptions = {
   launchConfig?: WorktreeStartupLaunch['launchConfig']
   launchToken?: string
   launchAgent?: TuiAgent
+  terminalColorQueryReplies?: TerminalOscColorQueryReplyColors
   viewMode?: 'terminal' | 'chat'
   startupCommandDelivery?: WorktreeStartupLaunch['startupCommandDelivery']
   telemetry?: WorktreeStartupLaunch['telemetry']
@@ -1276,6 +1291,7 @@ type RuntimePtyController = {
     leafId?: string
     sessionId?: string
     persistHostSessionBinding?: boolean
+    terminalColorQueryReplies?: { foreground?: string; background?: string }
   }): Promise<{ id: string; wslDistro?: string }>
   write(ptyId: string, data: string): boolean
   kill(ptyId: string): boolean
@@ -1289,6 +1305,8 @@ type RuntimePtyController = {
   hasChildProcesses?(ptyId: string): Promise<boolean>
   clearBuffer?(ptyId: string): Promise<void>
   resize?(ptyId: string, cols: number, rows: number): boolean
+  // Why: exact-id mobile polls should not enumerate every local and SSH PTY.
+  hasPty?(ptyId: string): boolean | null
   listProcesses?(): Promise<PtyProcessInfo[]>
   serializeBuffer?(
     ptyId: string,
@@ -2247,6 +2265,7 @@ export class OrcaRuntimeService {
   private authoritativeWindowId: number | null = null
   private tabs = new Map<string, RuntimeSyncedTab>()
   private mobileSessionTabsByWorktree = new Map<string, RuntimeMobileSessionTabsSnapshot>()
+  private clientSessionTabSelections = new ClientSessionTabSelectionStore()
   // Why: idempotency map for mobile terminal creation — a retried create with the
   // same clientMutationId returns the in-flight operation instead of duplicating.
   private mobileTerminalCreateByMutationId = new Map<
@@ -2270,7 +2289,10 @@ export class OrcaRuntimeService {
       viewMode?: 'terminal' | 'chat'
     }
   >()
-  private mobileSessionTabListeners = new Set<(snapshot: RuntimeMobileSessionTabsResult) => void>()
+  private mobileSessionTabListeners = new Set<{
+    listener: (snapshot: RuntimeMobileSessionTabsResult) => void
+    clientNavigationId?: string
+  }>()
   // Why: coalesces title/status-driven session.tabs emits so spinner churn
   // doesn't fan out (and per-client JSON.stringify) a snapshot several times a
   // second. Emit reads the latest snapshot, so only the freshest version ships.
@@ -3209,6 +3231,7 @@ export class OrcaRuntimeService {
       capabilities,
       hostPlatform: process.platform,
       terminalWindowsShell: this.store?.getSettings?.().terminalWindowsShell ?? null,
+      floatingWorkspaceEnabled: this.store?.getSettings?.().floatingTerminalEnabled !== false,
       protocolVersion: RUNTIME_PROTOCOL_VERSION,
       minCompatibleMobileVersion: MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION
     }
@@ -3295,7 +3318,27 @@ export class OrcaRuntimeService {
     startup?: WorktreeStartupLaunch,
     defaultTabs?: CreateWorktreeResult['defaultTabs']
   ): void {
+    this.notifyHostActivateWorktree(repoId, worktreeId, setup, startup, defaultTabs)
+    this.notifyClientsActivateWorktree(repoId, worktreeId, setup, startup, defaultTabs)
+  }
+
+  private notifyHostActivateWorktree(
+    repoId: string,
+    worktreeId: string,
+    setup?: CreateWorktreeResult['setup'],
+    startup?: WorktreeStartupLaunch,
+    defaultTabs?: CreateWorktreeResult['defaultTabs']
+  ): void {
     this.notifier?.activateWorktree(repoId, worktreeId, setup, startup, defaultTabs)
+  }
+
+  private notifyClientsActivateWorktree(
+    repoId: string,
+    worktreeId: string,
+    setup?: CreateWorktreeResult['setup'],
+    startup?: WorktreeStartupLaunch,
+    defaultTabs?: CreateWorktreeResult['defaultTabs']
+  ): void {
     this.emitClientEvent(
       toRuntimeActivateWorktreeEvent(repoId, worktreeId, setup, startup, defaultTabs)
     )
@@ -3550,24 +3593,32 @@ export class OrcaRuntimeService {
     }
   }
 
-  async listMobileSessionTabs(worktreeSelector: string): Promise<RuntimeMobileSessionTabsResult> {
+  async listMobileSessionTabs(
+    worktreeSelector: string,
+    clientNavigationId?: string
+  ): Promise<RuntimeMobileSessionTabsResult> {
     const explicitWorktreeId = this.getValidatedExplicitWorktreeIdSelector(worktreeSelector)
     if (explicitWorktreeId) {
       this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(explicitWorktreeId)
-      await this.refreshMobileSessionPtyRecords()
-      return this.getMobileSessionTabsForWorktree(explicitWorktreeId)
+      await this.refreshMobileSessionPtyRecords(explicitWorktreeId)
+      return this.getMobileSessionTabsForWorktree(explicitWorktreeId, clientNavigationId)
     }
     const worktree = await this.resolveWorktreeSelector(worktreeSelector)
     this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktree.id)
     await this.refreshMobileSessionPtyRecords()
-    return this.getMobileSessionTabsForWorktree(worktree.id)
+    return this.getMobileSessionTabsForWorktree(worktree.id, clientNavigationId)
   }
 
-  async listAllMobileSessionTabs(): Promise<RuntimeMobileSessionTabsResult[]> {
+  async listAllMobileSessionTabs(
+    clientNavigationId?: string
+  ): Promise<RuntimeMobileSessionTabsResult[]> {
     this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession()
     await this.refreshMobileSessionPtyRecords()
     return [...this.mobileSessionTabsByWorktree.values()].map((snapshot) =>
-      this.toMobileSessionTabsResult(snapshot)
+      this.clientSessionTabSelections.project(
+        this.toMobileSessionTabsResult(snapshot),
+        clientNavigationId
+      )
     )
   }
 
@@ -4590,30 +4641,45 @@ export class OrcaRuntimeService {
       return
     }
     const result = this.toMobileSessionTabsResult(snapshot)
-    for (const listener of this.mobileSessionTabListeners) {
-      listener(result)
+    for (const subscription of this.mobileSessionTabListeners) {
+      subscription.listener(
+        this.clientSessionTabSelections.project(result, subscription.clientNavigationId)
+      )
     }
   }
 
-  private async refreshMobileSessionPtyRecords(): Promise<void> {
-    if (!this.ptyController?.listProcesses) {
+  private async refreshMobileSessionPtyRecords(
+    targetWorktreeId: string | null = null
+  ): Promise<void> {
+    if (!this.ptyController?.listProcesses && !this.ptyController?.hasPty) {
       return
     }
-    const resolvedWorktrees = await this.listResolvedWorktrees()
-    await this.refreshPtyWorktreeRecordsFromController(resolvedWorktrees)
+    // Why: floating PTY identity is explicit, so polling must not resolve every Git/SSH worktree.
+    const isFloatingWorkspace = targetWorktreeId === FLOATING_TERMINAL_WORKTREE_ID
+    const resolvedWorktrees = isFloatingWorkspace ? [] : await this.listResolvedWorktrees()
+    await this.refreshPtyWorktreeRecordsFromController(
+      resolvedWorktrees,
+      isFloatingWorkspace ? targetWorktreeId : null
+    )
   }
 
   async activateMobileSessionTab(
     worktreeSelector: string,
     tabId: string,
     leafId?: string,
-    opts: { notifyClients?: boolean } = {}
+    opts: {
+      notifyClients?: boolean
+      clientNavigationId?: string
+      navigation?: RuntimeNavigationTarget
+    } = {}
   ): Promise<RuntimeMobileSessionTabsResult> {
+    const navigation = opts.navigation ?? (opts.notifyClients === false ? 'caller' : 'all')
+    const targetsHost = navigationTargetsHost(navigation)
     const explicitWorktreeId = this.getValidatedExplicitWorktreeIdSelector(worktreeSelector)
     const worktreeId =
       explicitWorktreeId ?? (await this.resolveWorktreeSelector(worktreeSelector)).id
     this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId)
-    await this.refreshMobileSessionPtyRecords()
+    await this.refreshMobileSessionPtyRecords(worktreeId)
     const snapshot = this.mobileSessionTabsByWorktree.get(worktreeId)
     const directTab = snapshot?.tabs.find((candidate) => candidate.id === tabId)
     const tab = leafId
@@ -4646,7 +4712,7 @@ export class OrcaRuntimeService {
       const shouldMaterializePendingTerminal =
         publicTab?.type === 'terminal' &&
         publicTab.status !== 'ready' &&
-        (opts.notifyClients === false ||
+        (!targetsHost ||
           !this.notifier?.focusTerminal ||
           this.shouldMaterializeHeadlessMobileSessionTab(snapshot!, tab))
       if (shouldMaterializePendingTerminal) {
@@ -4674,7 +4740,7 @@ export class OrcaRuntimeService {
           }
         }
         try {
-          await this.createHeadlessMobileSessionTerminal(worktreeId, true, undefined, {
+          await this.createHeadlessMobileSessionTerminal(worktreeId, targetsHost, undefined, {
             identity: {
               tabId: tab.parentTabId,
               leafId: tab.leafId,
@@ -4696,82 +4762,107 @@ export class OrcaRuntimeService {
           }
           throw err
         }
-        return this.getMobileSessionTabsForWorktree(worktreeId)
+        return this.applyMobileSessionTabNavigation(
+          this.getMobileSessionTabsForWorktree(worktreeId),
+          tab.id,
+          navigation,
+          opts.clientNavigationId
+        )
       }
+      const callerSnapshot = this.getMobileSessionTabsForWorktree(
+        worktreeId,
+        opts.clientNavigationId
+      )
       const activeSibling =
         tab.id === tabId || leafId
           ? null
-          : snapshot?.tabs.find(
-              (candidate): candidate is RuntimeMobileSessionTerminalTab =>
+          : (callerSnapshot.tabs.find(
+              (candidate) =>
                 candidate.type === 'terminal' &&
                 candidate.parentTabId === tab.parentTabId &&
                 candidate.isActive
-            )
+            ) as RuntimeMobileSessionTerminalTab | undefined)
       const targetTab = activeSibling ?? tab
-      if (opts.notifyClients === false) {
-        this.activateMobileSessionTabForRemoteClient(worktreeId, snapshot!, targetTab)
-        return this.getMobileSessionTabsForWorktree(worktreeId)
-      }
-      if (!this.notifier?.focusTerminal) {
+      if (targetsHost && !this.notifier?.focusTerminal) {
         if (
           !targetTab.isActive &&
           this.shouldPersistHeadlessMobileSessionActivation(snapshot!, targetTab)
         ) {
           this.activateHeadlessMobileSessionTerminalTab(worktreeId, snapshot!, targetTab)
         }
-        return this.getMobileSessionTabsForWorktree(worktreeId)
+      } else if (targetsHost) {
+        this.notifier?.focusTerminal?.(targetTab.parentTabId, worktreeId, targetTab.leafId)
       }
-      this.notifier?.focusTerminal(targetTab.parentTabId, worktreeId, targetTab.leafId)
+      return this.applyMobileSessionTabNavigation(
+        this.getMobileSessionTabsForWorktree(worktreeId),
+        targetTab.id,
+        navigation,
+        opts.clientNavigationId
+      )
     } else if (tab.type === 'browser') {
-      if (opts.notifyClients === false) {
-        this.activateMobileSessionTabForRemoteClient(worktreeId, snapshot!, tab)
-        return this.getMobileSessionTabsForWorktree(worktreeId)
-      }
       // Why: browser mobile tabs are renderer-owned unified tabs; focusing the
       // session tab keeps desktop tab order/group state authoritative.
-      this.notifier?.focusEditorTab?.(tab.id, worktreeId)
-    } else {
-      if (opts.notifyClients === false) {
-        this.activateMobileSessionTabForRemoteClient(worktreeId, snapshot!, tab)
-        return this.getMobileSessionTabsForWorktree(worktreeId)
+      if (targetsHost) {
+        this.notifier?.focusEditorTab?.(tab.id, worktreeId)
       }
-      this.notifier?.focusEditorTab?.(tab.id, worktreeId)
+    } else {
+      if (targetsHost) {
+        this.notifier?.focusEditorTab?.(tab.id, worktreeId)
+      }
     }
-    return this.getMobileSessionTabsForWorktree(worktreeId)
+    return this.applyMobileSessionTabNavigation(
+      this.getMobileSessionTabsForWorktree(worktreeId),
+      tab.id,
+      navigation,
+      opts.clientNavigationId
+    )
   }
 
-  private activateMobileSessionTabForRemoteClient(
-    worktreeId: string,
-    snapshot: RuntimeMobileSessionTabsSnapshot,
-    activeTab: RuntimeMobileSessionSnapshotTab
-  ): void {
-    // Why: phone tab selection should update the mobile snapshot without
-    // asking desktop renderers to focus the phone's background worktree.
-    const activeTopLevelId = activeTab.type === 'terminal' ? activeTab.parentTabId : activeTab.id
-    const tabs = snapshot.tabs.map((tab) => ({
-      ...tab,
-      isActive: tab.id === activeTab.id
-    }))
-    const tabGroups = snapshot.tabGroups?.map((group) =>
-      group.tabOrder.includes(activeTopLevelId)
-        ? { ...group, activeTabId: activeTopLevelId }
-        : group
-    )
-    const activeGroupId =
-      tabGroups?.find((group) => group.tabOrder.includes(activeTopLevelId))?.id ??
-      snapshot.activeGroupId
-    const nextSnapshot: RuntimeMobileSessionTabsSnapshot = {
-      ...snapshot,
-      publicationEpoch: `mobile-local:${Date.now().toString(36)}`,
-      snapshotVersion: snapshot.snapshotVersion + 1,
-      activeGroupId,
-      activeTabId: activeTab.id,
-      activeTabType: activeTab.type,
-      ...(tabGroups ? { tabGroups } : {}),
-      tabs
+  private applyMobileSessionTabNavigation(
+    snapshot: RuntimeMobileSessionTabsResult,
+    activeTabId: string,
+    navigation: RuntimeNavigationTarget,
+    clientNavigationId?: string
+  ): RuntimeMobileSessionTabsResult {
+    let callerSnapshot: RuntimeMobileSessionTabsResult | null = null
+    if (navigationTargetsClients(navigation)) {
+      // Why: follow is live intent; disconnected devices must not inherit stale navigation on reconnect.
+      const ids = new Set(
+        [...this.mobileSessionTabListeners]
+          .map((subscription) => subscription.clientNavigationId)
+          .filter((id): id is string => Boolean(id))
+      )
+      if (clientNavigationId) {
+        ids.add(clientNavigationId)
+      }
+      for (const id of ids) {
+        const projected = this.clientSessionTabSelections.activate(snapshot, id, activeTabId)
+        this.emitMobileSessionTabsSnapshotToClient(projected, id, true)
+        if (id === clientNavigationId) {
+          callerSnapshot = projected
+        }
+      }
+    } else if (clientNavigationId) {
+      // Why: follow-host still starts as caller navigation; the host is an additional target, not a replacement owner.
+      callerSnapshot = this.clientSessionTabSelections.activate(
+        snapshot,
+        clientNavigationId,
+        activeTabId
+      )
+      this.emitMobileSessionTabsSnapshotToClient(callerSnapshot, clientNavigationId)
     }
-    this.mobileSessionTabsByWorktree.set(worktreeId, nextSnapshot)
-    this.emitMobileSessionTabsSnapshot(nextSnapshot)
+    if (clientNavigationId) {
+      return callerSnapshot ?? this.clientSessionTabSelections.project(snapshot, clientNavigationId)
+    }
+    if (navigation === 'caller') {
+      const selection = activateClientSessionTabSelection(
+        snapshot,
+        deriveClientSessionTabSelection(snapshot),
+        activeTabId
+      )
+      return projectClientSessionTabSelection(snapshot, selection).snapshot
+    }
+    return snapshot
   }
 
   private shouldMaterializeHeadlessMobileSessionTab(
@@ -5975,15 +6066,21 @@ export class OrcaRuntimeService {
   }
 
   onMobileSessionTabsChanged(
-    listener: (snapshot: RuntimeMobileSessionTabsResult) => void
+    listener: (snapshot: RuntimeMobileSessionTabsResult) => void,
+    clientNavigationId?: string
   ): () => void {
-    this.mobileSessionTabListeners.add(listener)
+    const subscription = { listener, clientNavigationId }
+    this.mobileSessionTabListeners.add(subscription)
     return () => {
       // Why: flush pending coalesced notifies before dropping this listener so a
       // subscriber closing mid-window still receives the latest settled state.
       this.mobileSessionTabsNotifyCoalescer.flushAll()
-      this.mobileSessionTabListeners.delete(listener)
+      this.mobileSessionTabListeners.delete(subscription)
     }
+  }
+
+  forgetClientNavigationState(clientNavigationId: string): void {
+    this.clientSessionTabSelections.forgetClient(clientNavigationId)
   }
 
   // Why: terminal handles are normally created lazily when first referenced via
@@ -15540,7 +15637,11 @@ export class OrcaRuntimeService {
 
   async activateManagedWorktree(
     worktreeSelector: string,
-    opts: { notifyClients?: boolean; clientKind?: 'mobile' | 'runtime' } = {}
+    opts: {
+      notifyClients?: boolean
+      clientKind?: 'mobile' | 'runtime'
+      navigation?: RuntimeNavigationTarget
+    } = {}
   ): Promise<{
     repoId: string
     worktreeId: string
@@ -15556,8 +15657,11 @@ export class OrcaRuntimeService {
     if (!repo) {
       throw new Error('repo_not_found')
     }
+    const navigation = opts.navigation ?? (opts.notifyClients === false ? 'caller' : 'all')
+    const targetsHost = navigationTargetsHost(navigation)
+    const targetsClients = navigationTargetsClients(navigation)
 
-    if (opts.notifyClients === false && this.store?.getWorktreeMeta(worktree.id)?.isUnread) {
+    if (!targetsHost && this.store?.getWorktreeMeta(worktree.id)?.isUnread) {
       // Why: mobile/web session activation intentionally bypasses renderer
       // selection, so the runtime must acknowledge the unread state itself.
       this.store.setWorktreeMeta(worktree.id, { isUnread: false })
@@ -15566,11 +15670,17 @@ export class OrcaRuntimeService {
 
     let sleepingAgentWake: 'requested' | 'unsupported-headless' | 'not-applicable' =
       'not-applicable'
-    if (opts.notifyClients !== false) {
+    if (targetsHost || targetsClients) {
       // Why: inactive worktree terminal panes are renderer-owned and may not have
       // live PTYs until the desktop activates the worktree and mounts them.
-      this.notifyActivateWorktree(repo.id, worktree.id)
-    } else {
+      if (targetsHost) {
+        this.notifyHostActivateWorktree(repo.id, worktree.id)
+      }
+      if (targetsClients) {
+        this.notifyClientsActivateWorktree(repo.id, worktree.id)
+      }
+    }
+    if (!targetsHost) {
       // Why: mobile/web selection needs fresh session surfaces without forcing
       // every attached desktop renderer to navigate to the phone's workspace.
       this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktree.id, {
@@ -19190,6 +19300,8 @@ export class OrcaRuntimeService {
         tabId,
         agentTeamsPlan?.env
       )
+      const terminalColorQueryReplies =
+        launchOpts.terminalColorQueryReplies ?? getTerminalViewColorQueryReplyColors()
       const result = await this.ptyController.spawn({
         cols: 120,
         rows: 40,
@@ -19211,6 +19323,7 @@ export class OrcaRuntimeService {
         preAllocatedHandle,
         tabId,
         leafId,
+        ...(terminalColorQueryReplies ? { terminalColorQueryReplies } : {}),
         ...(launchOpts.sessionId ? { sessionId: launchOpts.sessionId } : {}),
         // Why: a headless-created pane has no renderer session writer. Persist
         // its tab/leaf binding at spawn so a later promoted window reattaches
@@ -19445,35 +19558,58 @@ export class OrcaRuntimeService {
       launchAgent?: TuiAgent
       viewMode?: 'terminal' | 'chat'
       activate?: boolean
+      select?: boolean
+      clientNavigationId?: string
+      navigation?: RuntimeNavigationTarget
       clientMutationId?: string
       signal?: AbortSignal
     } = {}
   ): Promise<RuntimeMobileSessionCreateTerminalResult> {
+    const navigation = opts.navigation ?? 'all'
+    const select = opts.select ?? opts.activate !== false
+    const runOpts = {
+      ...opts,
+      activate: select && navigationTargetsHost(navigation)
+    }
     const mutationId = opts.clientMutationId
+    let result: RuntimeMobileSessionCreateTerminalResult
     if (!mutationId) {
-      return this.runCreateMobileSessionTerminal(worktreeSelector, opts)
-    }
-    const mutationKey = `${worktreeSelector}\0${mutationId}`
-    // Why: a retried create (double-tap, reconnect replay) with the same
-    // idempotency key must return the in-flight operation instead of spawning a
-    // duplicate terminal. Successes are kept briefly so a retry whose response
-    // was lost in transit reuses the created terminal; failures are dropped
-    // immediately so a retry can start a fresh create.
-    const inflight = this.mobileTerminalCreateByMutationId.get(mutationKey)
-    if (inflight) {
-      return inflight
-    }
-    const run = this.runCreateMobileSessionTerminal(worktreeSelector, opts)
-    this.mobileTerminalCreateByMutationId.set(mutationKey, run)
-    const drop = (): void => {
-      if (this.mobileTerminalCreateByMutationId.get(mutationKey) === run) {
-        this.mobileTerminalCreateByMutationId.delete(mutationKey)
+      result = await this.runCreateMobileSessionTerminal(worktreeSelector, runOpts)
+    } else {
+      // Why: idempotency is caller-owned; two paired devices may reuse the same mutation id without sharing a result.
+      const mutationKey = `${opts.clientNavigationId ?? 'local'}\0${worktreeSelector}\0${mutationId}`
+      // Why: a retried create (double-tap, reconnect replay) with the same
+      // idempotency key must return the in-flight operation instead of spawning a
+      // duplicate terminal. Successes are kept briefly so a retry whose response
+      // was lost in transit reuses the created terminal; failures are dropped
+      // immediately so a retry can start a fresh create.
+      const inflight = this.mobileTerminalCreateByMutationId.get(mutationKey)
+      const run = inflight ?? this.runCreateMobileSessionTerminal(worktreeSelector, runOpts)
+      if (!inflight) {
+        this.mobileTerminalCreateByMutationId.set(mutationKey, run)
+        const drop = (): void => {
+          if (this.mobileTerminalCreateByMutationId.get(mutationKey) === run) {
+            this.mobileTerminalCreateByMutationId.delete(mutationKey)
+          }
+        }
+        void run.then(() => {
+          setTimeout(drop, MOBILE_TERMINAL_CREATE_RESULT_TTL_MS).unref?.()
+        }, drop)
       }
+      result = await run
     }
-    void run.then(() => {
-      setTimeout(drop, MOBILE_TERMINAL_CREATE_RESULT_TTL_MS).unref?.()
-    }, drop)
-    return run
+    if (select) {
+      const worktreeId =
+        this.getValidatedExplicitWorktreeIdSelector(worktreeSelector) ??
+        (await this.resolveWorktreeSelector(worktreeSelector)).id
+      this.applyMobileSessionTabNavigation(
+        this.getMobileSessionTabsForWorktree(worktreeId),
+        result.tab.id,
+        navigation,
+        opts.clientNavigationId
+      )
+    }
+    return result
   }
 
   private async runCreateMobileSessionTerminal(
@@ -19870,8 +20006,10 @@ export class OrcaRuntimeService {
     }
     this.mobileSessionTabsByWorktree.set(worktreeId, next)
     const result = this.toMobileSessionTabsResult(next)
-    for (const listener of this.mobileSessionTabListeners) {
-      listener(result)
+    for (const subscription of this.mobileSessionTabListeners) {
+      subscription.listener(
+        this.clientSessionTabSelections.project(result, subscription.clientNavigationId)
+      )
     }
     const created = result.tabs.find((candidate) => candidate.id === tab.id)
     if (!created || created.type !== 'terminal') {
@@ -20223,24 +20361,30 @@ export class OrcaRuntimeService {
     return null
   }
 
-  async focusTerminal(handle: string): Promise<RuntimeTerminalFocus> {
+  async focusTerminal(
+    handle: string,
+    options: { navigateHost?: boolean } = {}
+  ): Promise<RuntimeTerminalFocus> {
     const pty = this.getLivePtyForHandle(handle)
     if (pty) {
       if (!pty.pty.connected) {
         throw new Error('terminal_exited')
       }
       const parsedPaneKey = parsePaneKey(pty.pty.paneKey ?? '')
-      const revealed = await this.notifier?.revealTerminalSession?.(pty.pty.worktreeId, {
-        ptyId: pty.pty.ptyId,
-        title: getLatestPtyTitle(pty.pty),
-        ...(pty.pty.launchConfig
-          ? { launchConfig: copySleepingAgentLaunchConfig(pty.pty.launchConfig) }
-          : {}),
-        ...(pty.pty.launchToken ? { launchToken: pty.pty.launchToken } : {}),
-        ...(pty.pty.launchAgent ? { launchAgent: pty.pty.launchAgent } : {}),
-        ...(pty.pty.tabId !== null ? { tabId: pty.pty.tabId } : {}),
-        ...(parsedPaneKey ? { leafId: parsedPaneKey.leafId } : {})
-      })
+      const revealed =
+        options.navigateHost === false
+          ? undefined
+          : await this.notifier?.revealTerminalSession?.(pty.pty.worktreeId, {
+              ptyId: pty.pty.ptyId,
+              title: getLatestPtyTitle(pty.pty),
+              ...(pty.pty.launchConfig
+                ? { launchConfig: copySleepingAgentLaunchConfig(pty.pty.launchConfig) }
+                : {}),
+              ...(pty.pty.launchToken ? { launchToken: pty.pty.launchToken } : {}),
+              ...(pty.pty.launchAgent ? { launchAgent: pty.pty.launchAgent } : {}),
+              ...(pty.pty.tabId !== null ? { tabId: pty.pty.tabId } : {}),
+              ...(parsedPaneKey ? { leafId: parsedPaneKey.leafId } : {})
+            })
       return {
         handle,
         tabId: revealed?.tabId ?? pty.pty.tabId ?? pty.record.tabId,
@@ -20249,7 +20393,9 @@ export class OrcaRuntimeService {
     }
     this.assertGraphReady()
     const { leaf } = this.getLiveLeafForHandle(handle)
-    this.notifier?.focusTerminal(leaf.tabId, leaf.worktreeId, leaf.leafId)
+    if (options.navigateHost !== false) {
+      this.notifier?.focusTerminal(leaf.tabId, leaf.worktreeId, leaf.leafId)
+    }
     return { handle, tabId: leaf.tabId, worktreeId: leaf.worktreeId }
   }
 
@@ -21976,6 +22122,12 @@ export class OrcaRuntimeService {
     resolvedWorktrees: ResolvedWorktree[],
     targetWorktreeId: string | null = null
   ): Promise<Set<string> | null> {
+    if (targetWorktreeId === FLOATING_TERMINAL_WORKTREE_ID) {
+      const targetedLiveness = this.refreshFloatingWorkspacePtyLiveness()
+      if (targetedLiveness !== null) {
+        return targetedLiveness
+      }
+    }
     if (!this.ptyController?.listProcesses) {
       return null
     }
@@ -22012,6 +22164,87 @@ export class OrcaRuntimeService {
     }
     for (const pty of this.ptysById.values()) {
       if (!livePtyIds.has(pty.ptyId) && !this.leafExistsForPty(pty.ptyId)) {
+        pty.connected = false
+        pty.disconnectedAt ??= Date.now()
+      }
+    }
+    this.pruneDisconnectedPtyRecords()
+    return livePtyIds
+  }
+
+  private refreshFloatingWorkspacePtyLiveness(): Set<string> | null {
+    const controller = this.ptyController
+    if (!controller?.hasPty) {
+      return null
+    }
+    const knownPtyIds = new Set<string>()
+    const persistedBindingByPtyId = new Map<string, { tabId: string; paneKey: string }>()
+    for (const pty of this.ptysById.values()) {
+      if (pty.worktreeId === FLOATING_TERMINAL_WORKTREE_ID) {
+        knownPtyIds.add(pty.ptyId)
+      }
+    }
+    for (const leaf of this.leaves.values()) {
+      if (leaf.worktreeId === FLOATING_TERMINAL_WORKTREE_ID && leaf.ptyId) {
+        knownPtyIds.add(leaf.ptyId)
+      }
+    }
+    const snapshot = this.mobileSessionTabsByWorktree.get(FLOATING_TERMINAL_WORKTREE_ID)
+    for (const tab of snapshot?.tabs ?? []) {
+      if (tab.type !== 'terminal') {
+        continue
+      }
+      if (tab.ptyId) {
+        knownPtyIds.add(tab.ptyId)
+        persistedBindingByPtyId.set(tab.ptyId, {
+          tabId: tab.parentTabId,
+          paneKey: this.getMobileTerminalPaneKey(tab)
+        })
+      }
+      for (const [leafId, ptyId] of Object.entries(tab.parentLayout?.ptyIdsByLeafId ?? {})) {
+        knownPtyIds.add(ptyId)
+        persistedBindingByPtyId.set(ptyId, {
+          tabId: tab.parentTabId,
+          paneKey: isTerminalLeafId(leafId)
+            ? makePaneKey(tab.parentTabId, leafId)
+            : `${tab.parentTabId}:${/^pane:(\d+)$/.exec(leafId)?.[1] ?? leafId}`
+        })
+      }
+    }
+
+    const liveness = new Map<string, boolean>()
+    try {
+      for (const ptyId of knownPtyIds) {
+        const live = controller.hasPty(ptyId)
+        if (live === null) {
+          return null
+        }
+        liveness.set(ptyId, live)
+      }
+    } catch {
+      return null
+    }
+
+    const livePtyIds = new Set<string>()
+    for (const [ptyId, live] of liveness) {
+      let pty = this.ptysById.get(ptyId)
+      if (live) {
+        livePtyIds.add(ptyId)
+        const binding = persistedBindingByPtyId.get(ptyId)
+        if (!pty && binding) {
+          // Why: a live daemon PTY restored from disk needs its pane identity before mobile can issue a safe handle.
+          pty = this.recordPtyWorktree(ptyId, FLOATING_TERMINAL_WORKTREE_ID, {
+            connected: true,
+            tabId: binding.tabId,
+            paneKey: binding.paneKey
+          })
+        }
+        if (pty) {
+          pty.connected = true
+          pty.disconnectedAt = null
+          this.refreshPtyForegroundAgent(ptyId)
+        }
+      } else if (pty && !this.leafExistsForPty(ptyId)) {
         pty.connected = false
         pty.disconnectedAt ??= Date.now()
       }
@@ -22358,9 +22591,12 @@ export class OrcaRuntimeService {
       activeTabType: null,
       tabs: []
     }
-    for (const listener of this.mobileSessionTabListeners) {
-      listener(removed)
+    for (const subscription of this.mobileSessionTabListeners) {
+      subscription.listener(
+        this.clientSessionTabSelections.project(removed, subscription.clientNavigationId)
+      )
     }
+    this.clientSessionTabSelections.forgetWorktree(worktreeId)
   }
 
   notifyMobileSessionTabsChanged(worktreeId?: string): void {
@@ -22393,8 +22629,10 @@ export class OrcaRuntimeService {
     }
     // Why: browser bridge events are already worktree-scoped; don't fan out every workspace snapshot during navigation/tab churn.
     const result = this.toMobileSessionTabsResult(snapshot)
-    for (const listener of this.mobileSessionTabListeners) {
-      listener(result)
+    for (const subscription of this.mobileSessionTabListeners) {
+      subscription.listener(
+        this.clientSessionTabSelections.project(result, subscription.clientNavigationId)
+      )
     }
   }
 
@@ -22404,26 +22642,49 @@ export class OrcaRuntimeService {
     }
     for (const snapshot of this.mobileSessionTabsByWorktree.values()) {
       const result = this.toMobileSessionTabsResult(snapshot)
-      for (const listener of this.mobileSessionTabListeners) {
-        listener(result)
+      for (const subscription of this.mobileSessionTabListeners) {
+        subscription.listener(
+          this.clientSessionTabSelections.project(result, subscription.clientNavigationId)
+        )
       }
     }
   }
 
-  private getMobileSessionTabsForWorktree(worktreeId: string): RuntimeMobileSessionTabsResult {
+  private getMobileSessionTabsForWorktree(
+    worktreeId: string,
+    clientNavigationId?: string
+  ): RuntimeMobileSessionTabsResult {
     const snapshot = this.mobileSessionTabsByWorktree.get(worktreeId)
     if (!snapshot) {
-      return {
-        worktree: worktreeId,
-        publicationEpoch: 'none',
-        snapshotVersion: 0,
-        activeGroupId: null,
-        activeTabId: null,
-        activeTabType: null,
-        tabs: []
+      return this.clientSessionTabSelections.project(
+        {
+          worktree: worktreeId,
+          publicationEpoch: 'none',
+          snapshotVersion: 0,
+          activeGroupId: null,
+          activeTabId: null,
+          activeTabType: null,
+          tabs: []
+        },
+        clientNavigationId
+      )
+    }
+    return this.clientSessionTabSelections.project(
+      this.toMobileSessionTabsResult(snapshot),
+      clientNavigationId
+    )
+  }
+
+  private emitMobileSessionTabsSnapshotToClient(
+    projected: RuntimeMobileSessionTabsResult,
+    clientNavigationId: string,
+    follow = false
+  ): void {
+    for (const subscription of this.mobileSessionTabListeners) {
+      if (subscription.clientNavigationId === clientNavigationId) {
+        subscription.listener(follow ? { ...projected, navigationIntent: 'follow' } : projected)
       }
     }
-    return this.toMobileSessionTabsResult(snapshot)
   }
 
   private async resolveMobileMarkdownWorktreeId(
@@ -22924,6 +23185,14 @@ export class OrcaRuntimeService {
     | undefined {
     const db = this.getOrchestrationDbIfAvailable()
     if (!db) {
+      return undefined
+    }
+    // Why: this runs on every 16ms graph publish (title/status churn). With no
+    // dispatch rows — the overwhelming majority who never orchestrate — the
+    // per-terminal query fan-out below can only ever yield an empty result, so
+    // skip it wholesale via the DB's cached emptiness probe. Optional call so
+    // partial test-injected DBs without the probe fall through to the scan.
+    if (db.hasAnyDispatchContexts?.() === false) {
       return undefined
     }
     const contexts: Record<string, AgentStatusOrchestrationContext> = {}

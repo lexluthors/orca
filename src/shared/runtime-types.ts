@@ -77,6 +77,9 @@ export type RuntimeStatus = {
   // Why: legacy or saved WebSocket pairings may not carry scope metadata, so
   // the server stamps the authenticated token scope here for status.get only.
   deviceScope?: DeviceScope
+  // Why: mobile gates its Floating Workspace entry on this; absent on older
+  // hosts, false when the user disabled the feature in desktop settings.
+  floatingWorkspaceEnabled?: boolean
   // COMPAT(runtimeStatusMobileAliases): added 2026-05-15 for mobile builds
   // that still read these names; new desktop/CLI code uses the fields above.
   protocolVersion?: number
@@ -283,6 +286,8 @@ export type RuntimeMobileSessionTabsResult = {
   worktree: string
   publicationEpoch: string
   snapshotVersion: number
+  /** Live-only targeted command; omitted from durable/list snapshots so reconnect cannot replay navigation. */
+  navigationIntent?: 'follow'
   activeGroupId: string | null
   activeTabId: string | null
   activeTabType: 'terminal' | 'markdown' | 'file' | 'browser' | null

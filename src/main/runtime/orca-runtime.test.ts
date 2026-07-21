@@ -98,6 +98,10 @@ import { RpcDispatcher } from './rpc/dispatcher'
 import type { RpcRequest } from './rpc/core'
 import { TERMINAL_METHODS } from './rpc/methods/terminal'
 import { beginWatcherInstall } from '../ipc/watcher-removal-gate'
+import {
+  _resetTerminalViewAttributesForTest,
+  setTerminalViewAttributes
+} from './terminal-view-attribute-store'
 
 const ORIGINAL_PLATFORM = process.platform
 const ORIGINAL_PLATFORM_DESCRIPTOR = Object.getOwnPropertyDescriptor(process, 'platform')
@@ -587,6 +591,7 @@ vi.mock('../git/git-username', async () => {
 
 function resetRuntimeTestMocks(): void {
   resetPlatform()
+  _resetTerminalViewAttributesForTest()
   advertisedUrlWatcher.clear()
   electronMocks.BrowserWindow.fromId.mockReset()
   electronMocks.BrowserWindow.fromId.mockReturnValue(null)
@@ -1710,6 +1715,86 @@ describe('OrcaRuntimeService', () => {
     } as never)
 
     expect(runtime.getStatus().terminalWindowsShell).toBe('wsl.exe')
+  })
+
+  it('reports floating workspace availability from settings on status', () => {
+    expect(createRuntime().getStatus().floatingWorkspaceEnabled).toBe(true)
+
+    const disabledRuntime = new OrcaRuntimeService({
+      ...store,
+      getSettings: () => ({
+        ...store.getSettings(),
+        floatingTerminalEnabled: false
+      })
+    } as never)
+    expect(disabledRuntime.getStatus().floatingWorkspaceEnabled).toBe(false)
+  })
+
+  it('polls floating tabs with targeted PTY liveness and no repo/provider inventory', async () => {
+    const getRepos = vi.fn(store.getRepos)
+    const listProcesses = vi.fn().mockResolvedValue([])
+    const floatingPtyId = `${FLOATING_TERMINAL_WORKTREE_ID}@@pty-1`
+    const { runtimeStore } = makeRuntimeStoreWithWorkspaceSession(
+      makeWorkspaceSessionWithHeadlessTerminal({
+        activeRepoId: null,
+        activeWorktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+        activeTabIdByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: 'floating-tab' },
+        tabsByWorktree: {
+          [FLOATING_TERMINAL_WORKTREE_ID]: [
+            {
+              id: 'floating-tab',
+              ptyId: floatingPtyId,
+              worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+              title: 'Floating Terminal',
+              customTitle: null,
+              color: null,
+              sortOrder: 0,
+              createdAt: 1
+            }
+          ]
+        },
+        terminalLayoutsByTabId: {
+          'floating-tab': makeHeadlessTerminalLayout({ [HEADLESS_LEAF_ID]: floatingPtyId })
+        }
+      })
+    )
+    const runtime = new OrcaRuntimeService({ ...runtimeStore, getRepos } as never)
+    const ptyController = {
+      livePtyIds: new Set([floatingPtyId]),
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null,
+      hasPty(this: { livePtyIds: Set<string> }, ptyId: string) {
+        return this.livePtyIds.has(ptyId)
+      },
+      listProcesses
+    }
+    const hasPty = vi.spyOn(ptyController, 'hasPty')
+    runtime.setPtyController(ptyController)
+
+    const tabs = await runtime.listMobileSessionTabs(`id:${FLOATING_TERMINAL_WORKTREE_ID}`)
+    const terminals = await runtime.listTerminals(`id:${FLOATING_TERMINAL_WORKTREE_ID}`)
+    await runtime.listMobileSessionTabs(`id:${FLOATING_TERMINAL_WORKTREE_ID}`)
+    await runtime.listTerminals(`id:${FLOATING_TERMINAL_WORKTREE_ID}`)
+
+    expect(tabs.tabs).toEqual([
+      expect.objectContaining({
+        type: 'terminal',
+        parentTabId: 'floating-tab',
+        status: 'ready',
+        terminal: expect.any(String)
+      })
+    ])
+    expect(terminals.terminals).toEqual([
+      expect.objectContaining({
+        worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+        connected: true
+      })
+    ])
+    expect(hasPty).toHaveBeenCalledTimes(4)
+    expect(hasPty).toHaveBeenCalledWith(floatingPtyId)
+    expect(listProcesses).not.toHaveBeenCalled()
+    expect(getRepos).not.toHaveBeenCalled()
   })
 
   it('advertises browser screencast only when a renderer window is available', () => {
@@ -10244,6 +10329,37 @@ describe('OrcaRuntimeService', () => {
       tabId: spawnedEnv.ORCA_TAB_ID,
       leafId: spawnedLeafId
     })
+  })
+
+  it('passes cached view colors to background agent spawns for source-owned startup replies', async () => {
+    setTerminalViewAttributes({
+      foreground: [0xff, 0xff, 0xff],
+      background: [0x28, 0x2c, 0x34],
+      cursor: [0xff, 0xff, 0xff],
+      ansi: Array.from({ length: 256 }, () => [0, 0, 0] as [number, number, number]),
+      colorSchemeMode: 'dark',
+      cursorStyle: 'block',
+      cursorBlink: false
+    })
+    const spawn = vi.fn().mockResolvedValue({ id: 'pty-bg' })
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn,
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+
+    await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, { command: 'codex' })
+
+    expect(spawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        terminalColorQueryReplies: {
+          foreground: '#ffffff',
+          background: '#282c34'
+        }
+      })
+    )
   })
 
   it('applies Settings agent defaults to bare agent command terminal creates', async () => {
@@ -18881,6 +18997,62 @@ describe('OrcaRuntimeService', () => {
         terminal: result.tab.terminal
       })
     ])
+  })
+
+  it('selects a created terminal only for the paired caller', async () => {
+    let spawnIndex = 0
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn: vi.fn(async () => ({ id: `pty-headless-${++spawnIndex}` })),
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+    runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
+    const hostTerminal = await runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`)
+
+    const callerTerminal = await runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+      clientNavigationId: 'device-a',
+      navigation: 'caller'
+    })
+
+    expect((await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)).activeTabId).toBe(
+      hostTerminal.tab.id
+    )
+    expect(
+      (await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`, 'device-a')).activeTabId
+    ).toBe(callerTerminal.tab.id)
+    expect(
+      (await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`, 'device-b')).activeTabId
+    ).toBe(hostTerminal.tab.id)
+  })
+
+  it('scopes terminal-create idempotency to the paired caller', async () => {
+    let spawnIndex = 0
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn: vi.fn(async () => ({ id: `pty-headless-${++spawnIndex}` })),
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+    runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
+
+    const [createdA, createdB] = await Promise.all([
+      runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+        clientNavigationId: 'device-a',
+        navigation: 'caller',
+        clientMutationId: 'same-mutation'
+      }),
+      runtime.createMobileSessionTerminal(`id:${TEST_WORKTREE_ID}`, {
+        clientNavigationId: 'device-b',
+        navigation: 'caller',
+        clientMutationId: 'same-mutation'
+      })
+    ])
+
+    expect(createdA.tab.id).not.toBe(createdB.tab.id)
+    expect(spawnIndex).toBe(2)
   })
 
   it('creates mobile session terminals for folder workspaces in a headless runtime server', async () => {
