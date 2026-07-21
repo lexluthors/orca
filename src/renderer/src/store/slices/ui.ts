@@ -494,21 +494,6 @@ function hydratedUIPartialMatchesState(state: AppState, hydrated: Partial<UISlic
   )
 }
 
-// Record keys are exhaustive over TopLevelView, so a new view can't be silently missed.
-const TOP_LEVEL_VIEW_LOOKUP: Record<TopLevelView, true> = {
-  terminal: true,
-  settings: true,
-  tasks: true,
-  activity: true,
-  automations: true,
-  space: true,
-  skills: true,
-  mobile: true,
-  work: true,
-  git: true
-}
-const KNOWN_TOP_LEVEL_VIEWS = new Set<string>(Object.keys(TOP_LEVEL_VIEW_LOOKUP))
-
 function sanitizeHydratedActiveView(
   value: PersistedUIState['activeView'],
   experimentalActivityEnabled: boolean
@@ -2410,7 +2395,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
         ui.rightSidebarTab,
         ui.rightSidebarExplorerView
       )
-      const hydrated = {
+      const hydrated: Partial<AppState> = {
         // Why: persisted widths may be stale/corrupt/hand-edited; clamp during hydration so invalid values can't break layout.
         sidebarWidth: sanitizePersistedSidebarWidth(
           ui.sidebarWidth,

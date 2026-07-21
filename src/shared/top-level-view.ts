@@ -10,7 +10,9 @@ const TOP_LEVEL_VIEW_LOOKUP: Record<TopLevelView, true> = {
   automations: true,
   space: true,
   skills: true,
-  mobile: true
+  mobile: true,
+  work: true,
+  git: true
 }
 
 export function isTopLevelView(value: unknown): value is TopLevelView {
