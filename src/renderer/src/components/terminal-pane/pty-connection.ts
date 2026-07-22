@@ -27,6 +27,7 @@ import { takeCurrentPtyDeliveryAckCredit } from './terminal-pty-ack-gate'
 import { serializeWithAbsoluteCursor } from '../../../../shared/terminal-serialize-absolute-cursor'
 import { isTerminalQueryReply } from '../../../../shared/terminal-query-reply'
 import type { PtyBufferSnapshot, PtyConnectResult } from './pty-transport'
+import type { PtyTransportRecoveryState } from './pty-transport-types'
 import { createIpcPtyTransport } from './pty-transport'
 import { createRemoteRuntimePtyTransport } from './remote-runtime-pty-transport'
 import { getConnectionId } from '@/lib/connection-context'
@@ -235,6 +236,7 @@ import {
   agentProviderSessionsEqual,
   isResumableTuiAgent,
   normalizeAgentProviderSession,
+  type AgentProviderSessionMetadata,
   type ResumableTuiAgent,
   type SleepingAgentSessionRecord
 } from '../../../../shared/agent-session-resume'
@@ -481,6 +483,7 @@ type FreshSpawnOptions = {
 
 type ColdRestoreAgentResumeStartup = PendingStartupCommand & {
   agent: ResumableTuiAgent
+  resumeProviderSession: AgentProviderSessionMetadata
   launchConfig: NonNullable<ReturnType<typeof buildAgentResumeStartupPlan>>['launchConfig']
   launchToken: string
   useLiveEntry: boolean
@@ -2231,6 +2234,7 @@ export function connectPanePty(
     activePanePtyBinding = null
     activePanePtyBindingBoundAt = null
     delete pane.container.dataset.ptyId
+    delete pane.container.dataset.ptyRecoveryState
   }
 
   const agentCompletionCoordinator = createAgentCompletionCoordinator({
@@ -3348,6 +3352,9 @@ export function connectPanePty(
     ...(projectRuntime ? { projectRuntime } : {}),
     ...(terminalColorQueryReplies ? { terminalColorQueryReplies } : {}),
     ...(paneStartup?.launchConfig ? { launchConfig: paneStartup.launchConfig } : {}),
+    ...(paneStartup?.resumeProviderSession
+      ? { resumeProviderSession: paneStartup.resumeProviderSession }
+      : {}),
     ...(launchToken ? { launchToken } : {}),
     ...(paneStartup?.launchAgent ? { launchAgent: paneStartup.launchAgent } : {}),
     ...(paneStartup?.telemetry ? { telemetry: paneStartup.telemetry } : {}),
@@ -4487,6 +4494,7 @@ export function connectPanePty(
           ORCA_AGENT_LAUNCH_TOKEN: coldRestoreLaunchToken
         },
         launchConfig: startupPlan.launchConfig,
+        resumeProviderSession: providerSession,
         launchToken: coldRestoreLaunchToken,
         useLiveEntry: Boolean(useLiveEntry),
         hasSleepingRecord: Boolean(sleepingRecord),
@@ -4700,6 +4708,9 @@ export function connectPanePty(
           ? { env: mergeStartupEnvWithPaneIdentity(startupOverride.env) }
           : {}),
         ...(coldRestoreOverride ? { launchConfig: coldRestoreOverride.launchConfig } : {}),
+        ...(coldRestoreOverride
+          ? { resumeProviderSession: coldRestoreOverride.resumeProviderSession }
+          : {}),
         ...(coldRestoreOverride ? { launchToken: coldRestoreOverride.launchToken } : {}),
         ...(coldRestoreOverride ? { launchAgent: coldRestoreOverride.agent } : {}),
         ...(shouldDeclareHiddenAtSpawn() ? { initiallyHidden: true } : {}),
@@ -5218,6 +5229,13 @@ export function connectPanePty(
           onError: (message: string): void => {
             if (isCurrent()) {
               onError(message)
+            }
+          },
+          onRecoveryStateChange: (state: PtyTransportRecoveryState): void => {
+            if (isCurrent()) {
+              // Why: cached pixels remain visible while detached; expose transport truth for diagnostics and recovery UI.
+              pane.container.dataset.ptyRecoveryState = state.phase
+              deps.onPtyRecoveryStateRef?.current?.(pane.id, state)
             }
           }
         }
@@ -7552,6 +7570,9 @@ export function connectPanePty(
               ...(coldRestoreStartup?.launchConfig
                 ? { launchConfig: coldRestoreStartup.launchConfig }
                 : {}),
+              ...(coldRestoreStartup?.resumeProviderSession
+                ? { resumeProviderSession: coldRestoreStartup.resumeProviderSession }
+                : {}),
               ...(coldRestoreStartup?.launchToken
                 ? { launchToken: coldRestoreStartup.launchToken }
                 : {}),
@@ -7762,6 +7783,9 @@ export function connectPanePty(
           : {}),
         ...(coldRestoreStartup?.launchConfig
           ? { launchConfig: coldRestoreStartup.launchConfig }
+          : {}),
+        ...(coldRestoreStartup?.resumeProviderSession
+          ? { resumeProviderSession: coldRestoreStartup.resumeProviderSession }
           : {}),
         ...(coldRestoreStartup?.launchToken ? { launchToken: coldRestoreStartup.launchToken } : {}),
         ...(coldRestoreStartup?.agent ? { launchAgent: coldRestoreStartup.agent } : {}),
