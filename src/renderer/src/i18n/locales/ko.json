@@ -639,7 +639,8 @@
         "nativeDropTooManyPathsDescription": "한 번에 {{value0}}개 이하의 파일을 드롭하세요.",
         "nativeDropTooManyPaths": "드롭에 파일이 너무 많습니다.",
         "nativeDropPathsTooLargeDescription": "파일 수를 줄이거나 더 짧은 경로 목록을 사용하세요.",
-        "nativeDropPathsTooLarge": "드롭 경로 목록이 너무 큽니다."
+        "nativeDropPathsTooLarge": "드롭 경로 목록이 너무 큽니다.",
+        "ownerChanged": "Couldn't verify which host owns this workspace. Try again after it reconnects."
       },
       "useIpcEvents": {
         "0e3cf53060": "브라우저 탭 {{value0}}을(를) 찾을 수 없습니다",
@@ -656,7 +657,10 @@
         "2fe88c2e06": "원격 워크스페이스 동기화를 사용할 수 없습니다.",
         "2ec42e1c52": "아직 원격 워크스페이스가 없습니다.",
         "88214a785b": "워크스페이스 동기화가 로컬 세션 하이드레이션을 기다렸다가 시간 초과되었습니다.",
-        "4f78ba5885": "워크스페이스가 동기화되었습니다."
+        "4f78ba5885": "워크스페이스가 동기화되었습니다.",
+        "ef223fbb6b": "A device tried to connect but is not paired",
+        "11992d0337": "If this was your phone or another Orca client, re-pair it from Settings → Mobile.",
+        "6573cfe955": "Open Mobile Settings"
       },
       "useSettingsNavigationMetadata": {
         "4a728cd56b": "아직 구체화되고 있는 새로운 기능입니다. 한번 시도해 보세요.",
@@ -6261,7 +6265,10 @@
           "addPlannedHostToHost": "{{host}} 추가",
           "addPlannedHostConfirm": "이 프로젝트를 이 호스트에서 사용할 예정이라는 사실만 기록합니다. 폴더 추가나 클론은 나중에 할 수 있습니다.",
           "projectRuntime": "프로젝트 런타임",
-          "projectRuntimeDescription": "이 프로젝트를 Windows에서 실행할지 WSL에서 실행할지 선택합니다."
+          "projectRuntimeDescription": "이 프로젝트를 Windows에서 실행할지 WSL에서 실행할지 선택합니다.",
+          "hostStateDisconnected": "Disconnected",
+          "hostStateUnknown": "Unknown",
+          "nestedHostLabel": "{{value0}} via {{value1}}"
         },
         "RepositorySourceControlAiActionRows": {
           "548a6e1281": "명령 템플릿",
