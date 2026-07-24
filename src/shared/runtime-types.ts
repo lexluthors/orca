@@ -37,7 +37,9 @@ import type {
   SleepingAgentLaunchConfig
 } from './agent-session-resume'
 import type { StartupCommandDelivery } from './codex-startup-delivery'
+import type { RemoteServerUpdateSupport } from './remote-server-update'
 import type { ExecutionHostId } from './execution-host'
+import type { PtyIncarnationId } from './pty-incarnation'
 
 export type { RuntimeMarkdownReadTabResult, RuntimeMarkdownSaveTabResult }
 
@@ -75,6 +77,9 @@ export type RuntimeStatus = {
   runtimeProtocolVersion?: number
   minCompatibleRuntimeClientVersion?: number
   capabilities?: RuntimeCapability[]
+  // Why: optional fields let updated clients inventory both new and legacy paired servers.
+  appVersion?: string
+  remoteUpdateSupport?: RemoteServerUpdateSupport
   remoteControl?: RemoteRuntimeSharedConnectionDiagnostics | null
   hostPlatform?: NodeJS.Platform
   terminalWindowsShell?: string | null
@@ -107,6 +112,9 @@ export type CliStatusResult = {
     state: CliRuntimeState
     reachable: boolean
     runtimeId: string | null
+    appVersion?: string
+    remoteUpdateSupport?: RemoteServerUpdateSupport
+    capabilities?: RuntimeCapability[]
   }
   graph: {
     state: RuntimeGraphStatus | 'not_running' | 'starting'
@@ -410,6 +418,8 @@ export type RuntimeFileReadChunkResult = {
 export type RuntimeTerminalSummary = {
   handle: string
   ptyId: string | null
+  incarnationId?: string | null
+  orphaned?: boolean
   worktreeId: string
   worktreePath: string
   branch: string
@@ -473,8 +483,52 @@ export type RuntimeTerminalVisualLayout = {
 export type RuntimeTerminalListResult = {
   terminals: RuntimeTerminalSummary[]
   visualLayouts?: RuntimeTerminalVisualLayout[]
+  topologyRevisions?: Record<string, number>
   totalCount: number
   truncated: boolean
+}
+
+export type RuntimeTerminalOrphanAdoptionClaim = {
+  terminal: string
+  ptyId: string
+  incarnationId: PtyIncarnationId
+  tabId: string
+  leafId: string
+}
+
+export type RuntimeTerminalOrphanTopologyTab = {
+  tabId: string
+  root: TerminalPaneLayoutNode
+  activeLeafId: string
+  expandedLeafId: string | null
+}
+
+export type RuntimeTerminalOrphanTopologyGroup = {
+  id: string
+  activeTabId: string
+  tabOrder: string[]
+  recentTabIds?: string[]
+}
+
+export type RuntimeTerminalOrphanTopology = {
+  tabs: RuntimeTerminalOrphanTopologyTab[]
+  groups: RuntimeTerminalOrphanTopologyGroup[]
+  groupLayout?: TabGroupLayoutNode
+}
+
+export type RuntimeTerminalOrphanAdoptionRequest = {
+  worktree: string
+  expectedTopologyRevision: number
+  claims: RuntimeTerminalOrphanAdoptionClaim[]
+  activeTabId?: string
+  activeGroupId?: string
+  topology?: RuntimeTerminalOrphanTopology
+}
+
+export type RuntimeTerminalOrphanAdoptionResult = {
+  adopted: boolean
+  topologyRevision: number
+  snapshot: RuntimeMobileSessionTabsResult
 }
 
 export type RuntimeWorktreeTerminalSleepFailure =
