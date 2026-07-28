@@ -1244,7 +1244,8 @@ export function buildRows(
               tone: PROJECT_GROUP_META.tone,
               icon: PROJECT_GROUP_META.icon,
               repo,
-              projectGroupDepth
+              projectGroupDepth,
+              worktreeIds: group.items.map((worktree) => worktree.id)
             }
           : groupBy === 'workspace-status'
             ? (() => {
@@ -1419,6 +1420,26 @@ export function buildRows(
       directCount + folderWorkspaceCount
     )
   }
+  // Why: project group headers need the full set of descendant worktree IDs so clicking
+  // the header can activate the first worktree and position the center content area.
+  const getProjectGroupWorktreeIds = (groupId: string): string[] => {
+    const ids: string[] = []
+    const repoEntries = groupByProjectGroupId.get(groupId) ?? []
+    for (const [, group] of repoEntries) {
+      for (const worktree of group.items) {
+        ids.push(worktree.id)
+      }
+    }
+    const folderWorkspaces = folderWorkspacesByProjectGroupId.get(groupId) ?? []
+    for (const folderWorkspace of folderWorkspaces) {
+      ids.push(folderWorkspace.id)
+    }
+    const children = childGroupsByParentId.get(groupId) ?? []
+    for (const child of children) {
+      ids.push(...getProjectGroupWorktreeIds(child.id))
+    }
+    return ids
+  }
 
   const appendProjectGroup = (projectGroup: ProjectGroup, depth: number): void => {
     const repoEntries = sortRepoEntriesWithinGroup(groupByProjectGroupId.get(projectGroup.id) ?? [])
@@ -1432,7 +1453,8 @@ export function buildRows(
       tone: PROJECT_GROUP_META.tone,
       icon: PROJECT_GROUP_META.icon,
       projectGroup,
-      projectGroupDepth: depth
+      projectGroupDepth: depth,
+      worktreeIds: getProjectGroupWorktreeIds(projectGroup.id)
     })
     if (!collapsedGroups.has(key)) {
       for (const folderWorkspace of folderWorkspacesByProjectGroupId.get(projectGroup.id) ?? []) {

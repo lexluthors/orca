@@ -35,13 +35,13 @@ describe('repo header action targets', () => {
     expect(isRepoHeaderActionTarget(header, header)).toBe(false)
   })
 
-  it('ignores the hover collapse affordance', () => {
+  it('ignores elements nested within action-marked ancestors', () => {
     const header = createHeader(`
-      <div data-repo-header-collapse-affordance="">
-        <span id="chevron"></span>
+      <div data-repo-header-action="">
+        <span id="icon"></span>
       </div>
     `)
 
-    expect(isRepoHeaderActionTarget(header.querySelector('#chevron'), header)).toBe(true)
+    expect(isRepoHeaderActionTarget(header.querySelector('#icon'), header)).toBe(true)
   })
 })

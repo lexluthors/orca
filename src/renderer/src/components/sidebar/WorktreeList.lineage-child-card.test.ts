@@ -865,21 +865,22 @@ describe('WorktreeList lineage child card renderer', () => {
     expect(markup).not.toContain('No workspaces found')
   })
 
-  it('renders a collapse chevron on project group headers with children', async () => {
+  it('renders project group headers without collapse affordance (collapse disabled)', async () => {
     setProjectGroupWithoutWorktreeRowsState()
     const markup = await renderWorktreeListMarkup()
 
-    expect(markup).toContain('data-repo-header-collapse-affordance=""')
-    expect(markup).toContain('aria-expanded="true"')
+    // Why: collapse is disabled — the chevron affordance and aria-expanded are no longer rendered.
+    expect(markup).not.toContain('data-repo-header-collapse-affordance=""')
+    expect(markup).not.toContain('aria-expanded=')
   })
 
-  it('renders collapsed project group header affordance state', async () => {
+  it('renders project group header without collapsed state (collapse disabled)', async () => {
     setProjectGroupWithoutWorktreeRowsState([], new Set(['project-group:group-1']))
     const markup = await renderWorktreeListMarkup()
 
-    expect(markup).toContain('data-repo-header-collapse-affordance=""')
-    expect(markup).toContain('aria-expanded="false"')
-    expect(markup).toContain('-rotate-90')
+    // Why: collapse is disabled — the header never shows collapsed styling.
+    expect(markup).not.toContain('data-repo-header-collapse-affordance=""')
+    expect(markup).not.toContain('-rotate-90')
   })
 
   it('does not render the project collapse affordance on flat section headers', async () => {
@@ -907,23 +908,23 @@ describe('WorktreeList lineage child card renderer', () => {
     ).toEqual(['pinned'])
   })
 
-  it('renders a collapse chevron on status group headers with worktrees', async () => {
+  it('renders status group headers without collapse affordance (collapse disabled)', async () => {
     setLineageFixtureState('workspace-status')
     const markup = await renderWorktreeListMarkup()
 
     expect(markup).toContain('In progress')
     expect(markup).toContain('data-workspace-status-drop-target=""')
-    expect(markup).toContain('data-repo-header-collapse-affordance=""')
-    expect(markup).toContain('aria-expanded="true"')
+    // Why: collapse is disabled — the chevron affordance is no longer rendered.
+    expect(markup).not.toContain('data-repo-header-collapse-affordance=""')
   })
 
-  it('renders a collapse chevron on grouped repo headers with worktrees', async () => {
+  it('renders grouped repo headers without collapse affordance (collapse disabled)', async () => {
     setLineageFixtureState('repo')
     const markup = await renderWorktreeListMarkup()
 
-    expect(markup).toContain('data-repo-header-collapse-affordance=""')
+    // Why: collapse is disabled — the chevron affordance is no longer rendered.
+    expect(markup).not.toContain('data-repo-header-collapse-affordance=""')
     expect(markup).toContain('data-repo-header-id="repo-1"')
-    expect(markup).toContain('aria-expanded="true"')
   })
 
   it('does not render the collapse affordance on empty ungrouped projects', async () => {
