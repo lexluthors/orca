@@ -29,7 +29,6 @@ import {
   downloadUpdate,
   getUpdateStatus,
   quitAndInstall,
-  setupAutoUpdater,
   dismissNudge,
   type UpdateInstallMode
 } from '../updater'
@@ -51,11 +50,9 @@ import {
   scheduleWorktreeBaseDirectoryWatcherSync,
   setWorktreeBaseDirectoryWatcherSyncContext
 } from '../ipc/worktree-base-directory-watcher'
-import { logStartupMilestone } from '../startup/startup-diagnostics'
-
-const UPDATER_SETUP_FALLBACK_MS = 15_000
 
 // Why: a manual check can arrive before deferred setup runs, so entry points force this pending setup to configure the updater first.
+// [DISABLED] Auto-updater disabled - keeping the hook for API compatibility but it's a no-op now.
 let pendingAutoUpdaterSetup: (() => void) | null = null
 
 export function ensureAutoUpdaterConfigured(): void {
@@ -129,46 +126,12 @@ export function attachMainWindowServices(
   registerSshHandlers(store, () => mainWindow, runtime)
   registerRemoteWorkspaceHandlers(store, () => mainWindow)
   registerFileDropRelay(mainWindow)
-  // Why: setupAutoUpdater sync-require()s electron-updater (slow on cold Windows w/ Defender, #7225), so defer past first paint; timer fallback covers crash-looping renderers.
-  let updaterSetupDone = false
+  // [DISABLED] Auto-updater disabled to prevent conflicts with manual deb installations.
+  // Original code would setup electron-updater for automatic update checks.
   const setupAutoUpdaterDeferred = (): void => {
-    if (updaterSetupDone || mainWindow.isDestroyed()) {
-      return
-    }
-    updaterSetupDone = true
-    setupAutoUpdater(mainWindow, {
-      getLastUpdateCheckAt: () => store.getUI().lastUpdateCheckAt,
-      onBeforeQuit: async () => {
-        try {
-          await options?.onBeforeUpdateQuit?.()
-        } finally {
-          store.flush()
-        }
-      },
-      setLastUpdateCheckAt: (timestamp) => {
-        store.updateUI({ lastUpdateCheckAt: timestamp })
-      },
-      getPendingUpdateNudgeId: () => store.getUI().pendingUpdateNudgeId ?? null,
-      getDismissedUpdateNudgeId: () => store.getUI().dismissedUpdateNudgeId ?? null,
-      setPendingUpdateNudgeId: (id) => {
-        // Why: only the apply branch also nulls dismissedUpdateVersion so relaunch can't resurrect the old hidden card; clearing must not, or it un-dismisses.
-        if (id) {
-          store.updateUI({ pendingUpdateNudgeId: id, dismissedUpdateVersion: null })
-        } else {
-          store.updateUI({ pendingUpdateNudgeId: null })
-        }
-      },
-      setDismissedUpdateNudgeId: (id) => {
-        store.updateUI({ dismissedUpdateNudgeId: id })
-      },
-      installMode: options?.updateInstallMode
-    })
-    logStartupMilestone('updater-setup-done')
+    // Auto-updater disabled - no-op
   }
   pendingAutoUpdaterSetup = setupAutoUpdaterDeferred
-  mainWindow.once('ready-to-show', () => setImmediate(setupAutoUpdaterDeferred))
-  const updaterSetupFallback = setTimeout(setupAutoUpdaterDeferred, UPDATER_SETUP_FALLBACK_MS)
-  updaterSetupFallback.unref?.()
   registerRuntimeWindowLifecycle(mainWindow, runtime)
 
   const allowedPermissions = new Set(['media', 'fullscreen', 'pointerLock'])
