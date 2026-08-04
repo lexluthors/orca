@@ -1,5 +1,5 @@
-import React from 'react'
-import { Check, Trash2, StickyNote, Pin } from 'lucide-react'
+import React, { useState } from 'react'
+import { Check, Trash2, StickyNote, Pin, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDueDate } from './work-hours'
 import type { WorkItem, WorkItemPriority } from './types'
@@ -24,6 +24,25 @@ export function TodoRow({
   onDelete: () => void
 }): React.JSX.Element {
   const dueInfo = formatDueDate(item.dueAt)
+  const [sending, setSending] = useState(false)
+
+  const sendToFeishu = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSending(true)
+    try {
+      const text = `${item.title}${item.content ? '\n' + item.content : ''}`
+      await fetch('https://open.feishu.cn/open-apis/bot/v2/hook/9d4a2153-b037-4a46-8179-5db1733bd441', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          msg_type: 'text',
+          content: { text }
+        })
+      })
+    } finally {
+      setSending(false)
+    }
+  }
 
   return (
     <div
@@ -85,6 +104,15 @@ export function TodoRow({
 
       {/* Actions — visible on hover */}
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={sendToFeishu}
+          disabled={sending}
+          className="rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+          title="发送到飞书群"
+        >
+          <Send className="size-3.5" />
+        </button>
         <button
           type="button"
           onClick={(e) => {
