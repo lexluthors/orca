@@ -2910,7 +2910,11 @@ function createShellApi(): NonNullable<Partial<PreloadApi>['shell']> {
     pickRepoIconImage: () => Promise.resolve(null),
     pickAudio: () => Promise.resolve(null),
     pickDirectory: () => Promise.resolve(null),
-    copyFile: () => Promise.resolve()
+    copyFile: () => Promise.resolve(),
+    openSystemTerminal: () =>
+      Promise.resolve({ ok: false as const, reason: 'remote-runtime-unsupported' as const }),
+    executeFile: () =>
+      Promise.resolve({ ok: false as const, reason: 'remote-runtime-unsupported' as const })
   }
 }
 

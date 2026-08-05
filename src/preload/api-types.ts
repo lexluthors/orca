@@ -2315,6 +2315,11 @@ export type PreloadApi = {
     pickAudio: () => Promise<string | null>
     pickDirectory: (args: { defaultPath?: string }) => Promise<string | null>
     copyFile: (args: { srcPath: string; destPath: string }) => Promise<void>
+    openSystemTerminal: (args: {
+      path: string
+      isDirectory: boolean
+    }) => Promise<ShellOpenLocalPathResult>
+    executeFile: (path: string) => Promise<ShellOpenLocalPathResult>
   }
   skills: {
     discover: (target?: SkillDiscoveryTarget) => Promise<SkillDiscoveryResult>

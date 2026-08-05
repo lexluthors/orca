@@ -40,6 +40,8 @@ type FileExplorerVirtualRowsProps = {
   onAddFolderAsProject: (node: TreeNode) => void
   canAddFolderAsProject: (node: TreeNode) => boolean
   onOpenInTerminal: (node: TreeNode) => void
+  onOpenSystemTerminal: (node: TreeNode) => void
+  onExecute: (node: TreeNode) => void
   onRequestDelete: (node: TreeNode) => void
   onCollapseFolderSubtree: (node: TreeNode) => void
   onFindInFolder: (node: TreeNode) => void
@@ -86,6 +88,8 @@ export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): Re
     onAddFolderAsProject,
     canAddFolderAsProject,
     onOpenInTerminal,
+    onOpenSystemTerminal,
+    onExecute,
     onRequestDelete,
     onCollapseFolderSubtree,
     onFindInFolder,
@@ -194,6 +198,8 @@ export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): Re
               onAddFolderAsProject={() => onAddFolderAsProject(n)}
               canAddAsProject={canAddFolderAsProject(n)}
               onOpenInTerminal={() => onOpenInTerminal(n)}
+              onOpenSystemTerminal={() => onOpenSystemTerminal(n)}
+              onExecute={() => onExecute(n)}
               onRequestDelete={() => onRequestDelete(n)}
               onCollapseFolderSubtree={() => onCollapseFolderSubtree(n)}
               onFindInFolder={() => onFindInFolder(n)}

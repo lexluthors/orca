@@ -2241,7 +2241,15 @@ const api = {
       ipcRenderer.invoke('shell:pickDirectory', args),
 
     copyFile: (args: { srcPath: string; destPath: string }): Promise<void> =>
-      ipcRenderer.invoke('shell:copyFile', args)
+      ipcRenderer.invoke('shell:copyFile', args),
+
+    openSystemTerminal: (args: {
+      path: string
+      isDirectory: boolean
+    }): Promise<ShellOpenLocalPathResult> => ipcRenderer.invoke('shell:openSystemTerminal', args),
+
+    executeFile: (path: string): Promise<ShellOpenLocalPathResult> =>
+      ipcRenderer.invoke('shell:executeFile', path)
   },
 
   skills: {

@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- Why: FileExplorer coordinates tree data, selection, drag/drop, and virtual rows; splitting it during this merge would obscure the interaction invariants. */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { useActiveWorktree, useRepoById } from '@/store/selectors'
 import { basename, dirname } from '@/lib/path'
@@ -598,6 +599,25 @@ function FileExplorerFiles(): React.JSX.Element {
     },
     [activeWorktreeId]
   )
+  const handleExecute = useCallback((node: TreeNode) => {
+    void (async () => {
+      const result = await window.api.shell.executeFile(node.path)
+      if (!result.ok) {
+        toast.error(`Failed to execute '${node.name}': ${result.reason}`)
+      }
+    })()
+  }, [])
+  const handleOpenSystemTerminal = useCallback((node: TreeNode) => {
+    void (async () => {
+      const result = await window.api.shell.openSystemTerminal({
+        path: node.path,
+        isDirectory: node.isDirectory
+      })
+      if (!result.ok) {
+        toast.error(`Failed to open system terminal: ${result.reason}`)
+      }
+    })()
+  }, [])
 
   if (!worktreePath) {
     return (
@@ -767,6 +787,8 @@ function FileExplorerFiles(): React.JSX.Element {
                 onAddFolderAsProject={handleAddFolderAsProject}
                 canAddFolderAsProject={(node) => canShowAddAsProjectAction(node, activeRepo)}
                 onOpenInTerminal={handleOpenInTerminal}
+                onOpenSystemTerminal={handleOpenSystemTerminal}
+                onExecute={handleExecute}
                 onRequestDelete={handleContextMenuDelete}
                 onCollapseFolderSubtree={handleCollapseFolderSubtree}
                 onFindInFolder={handleFindInFolder}

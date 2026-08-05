@@ -13,10 +13,19 @@ export type ShellOpenPathFailureReason =
   | 'ssh-target-invalid'
   | 'ssh-alias-required'
   | 'remote-editor-unsupported'
+  | 'unsupported-file-type'
+  | 'chmod-failed'
+  | 'unsupported-platform'
 
 export type ShellOpenLocalPathFailureReason = Extract<
   ShellOpenPathFailureReason,
-  'not-absolute' | 'not-found' | 'launch-failed' | 'remote-runtime-unsupported'
+  | 'not-absolute'
+  | 'not-found'
+  | 'launch-failed'
+  | 'remote-runtime-unsupported'
+  | 'unsupported-file-type'
+  | 'chmod-failed'
+  | 'unsupported-platform'
 >
 
 export type ShellOpenLocalPathResult =

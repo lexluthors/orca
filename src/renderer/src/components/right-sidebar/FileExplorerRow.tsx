@@ -19,6 +19,7 @@ import {
   Link,
   Loader2,
   Pencil,
+  Play,
   Search,
   SquareTerminal,
   Trash2
@@ -290,6 +291,8 @@ type FileExplorerRowProps = {
   onAddFolderAsProject: () => void
   canAddAsProject: boolean
   onOpenInTerminal: () => void
+  onOpenSystemTerminal: () => void
+  onExecute: () => void
   onRequestDelete: () => void
   onCollapseFolderSubtree: () => void
   onFindInFolder: () => void
@@ -311,6 +314,24 @@ export function shouldShowFindInFolderAction(node: TreeNode): boolean {
 
 export function shouldShowOpenInTerminalAction(node: TreeNode): boolean {
   return node.isDirectory
+}
+
+const EXECUTABLE_FILE_EXTENSIONS = new Set(['.deb', '.appimage', '.apk', '.py', '.sh'])
+
+export function isExecutableFileType(node: TreeNode): boolean {
+  if (node.isDirectory) {
+    return false
+  }
+  const path = node.path.toLowerCase()
+  if (path.endsWith('.appimage')) {
+    return true
+  }
+  const dotIndex = path.lastIndexOf('.')
+  if (dotIndex < 0) {
+    return false
+  }
+  const ext = path.slice(dotIndex)
+  return EXECUTABLE_FILE_EXTENSIONS.has(ext)
 }
 
 export function shouldShowViewFileAction(node: TreeNode): boolean {
@@ -461,6 +482,8 @@ export function FileExplorerRow({
   onAddFolderAsProject,
   canAddAsProject,
   onOpenInTerminal,
+  onOpenSystemTerminal,
+  onExecute,
   onRequestDelete,
   onCollapseFolderSubtree,
   onFindInFolder,
@@ -730,6 +753,19 @@ export function FileExplorerRow({
             {translate('auto.components.right.sidebar.FileExplorerRow.0fec99bfd7', 'Duplicate')}
           </ContextMenuItem>
         )}
+        {isExecutableFileType(node) && (
+          <ContextMenuItem onSelect={onExecute}>
+            <Play />
+            {translate('auto.components.right.sidebar.FileExplorerRow.execute', 'Execute')}
+          </ContextMenuItem>
+        )}
+        <ContextMenuItem onSelect={onOpenSystemTerminal}>
+          <SquareTerminal />
+          {translate(
+            'auto.components.right.sidebar.FileExplorerRow.openSystemTerminal',
+            'Open in System Terminal'
+          )}
+        </ContextMenuItem>
         {canAddAsProject && (
           <ContextMenuItem onSelect={onAddFolderAsProject}>
             <FolderPlus />
