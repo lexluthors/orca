@@ -76,6 +76,7 @@ describe('FileExplorerVirtualRows add-as-project action', () => {
       onStartNew: vi.fn(),
       onStartRename: vi.fn(),
       onDuplicate: vi.fn(),
+      onCopyFile: vi.fn(),
       onAddFolderAsProject,
       canAddFolderAsProject: (node) => node.path === directoryNode.path,
       onOpenInTerminal: vi.fn(),

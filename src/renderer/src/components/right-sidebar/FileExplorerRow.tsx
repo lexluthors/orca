@@ -290,6 +290,7 @@ type FileExplorerRowProps = {
   onDuplicate: (node: TreeNode) => void
   onAddFolderAsProject: () => void
   canAddAsProject: boolean
+  onCopyFile: () => void
   onOpenInTerminal: () => void
   onOpenSystemTerminal: () => void
   onExecute: () => void
@@ -363,10 +364,10 @@ export function shouldShowCopyFileAction(
   selectionSize = 1
 ): boolean {
   // Why: remote directories would require recursive materialization semantics;
-  // keep this to a single concrete file reference until multi-file copy exists.
+  // allow multi-select copy for local files and single remote files.
   return (
     (!connectionId || !node.isDirectory) &&
-    selectionSize === 1 &&
+    selectionSize >= 1 &&
     (globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ !== true
   )
 }
@@ -433,26 +434,6 @@ export async function downloadRemoteFile(
   }
 }
 
-export async function copyFileToOsClipboard(
-  node: TreeNode,
-  connectionId?: string | null
-): Promise<void> {
-  const failureMessage = translate(
-    'auto.components.right.sidebar.FileExplorerRow.b234ab25b4',
-    'Could not copy the file to the clipboard'
-  )
-  try {
-    const result = await window.api.ui.writeClipboardFile(
-      connectionId ? { filePath: node.path, connectionId } : node.path
-    )
-    if (!result.ok) {
-      toast.error(failureMessage)
-    }
-  } catch (error) {
-    toast.error(extractIpcErrorMessage(error, failureMessage))
-  }
-}
-
 export function FileExplorerRow({
   node,
   isExpanded,
@@ -481,6 +462,7 @@ export function FileExplorerRow({
   onDuplicate,
   onAddFolderAsProject,
   canAddAsProject,
+  onCopyFile,
   onOpenInTerminal,
   onOpenSystemTerminal,
   onExecute,
@@ -536,9 +518,6 @@ export function FileExplorerRow({
     }
     void downloadRemoteFile(node, downloadTarget)
   }, [connectionId, node, runtimeDownloadContext])
-  const handleCopyFile = useCallback(() => {
-    void copyFileToOsClipboard(node, connectionId)
-  }, [connectionId, node])
 
   return (
     <ContextMenu
@@ -718,9 +697,14 @@ export function FileExplorerRow({
         </ContextMenuItem>
         <ContextMenuSeparator />
         {showCopyFileAction && (
-          <ContextMenuItem onSelect={handleCopyFile}>
+          <ContextMenuItem onSelect={onCopyFile}>
             <Copy />
-            {translate('auto.components.right.sidebar.FileExplorerRow.98a79948b3', 'Copy')}
+            {selectionSize > 1
+              ? translate(
+                  'auto.components.right.sidebar.FileExplorerRow.copyFiles',
+                  `Copy ${selectionSize} Files`
+                )
+              : translate('auto.components.right.sidebar.FileExplorerRow.98a79948b3', 'Copy')}
           </ContextMenuItem>
         )}
         <ContextMenuItem onSelect={() => onCopyPaths('absolute')}>

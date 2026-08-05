@@ -552,6 +552,28 @@ function FileExplorerFiles(): React.JSX.Element {
   )
 
   const handleDuplicate = useFileDuplicate({ activeWorktreeId, worktreePath, refreshDir })
+  // Why: multi-select file copy — collects all selected paths (or just the
+  // clicked node if not part of a selection) and passes them as an array to
+  // the OS clipboard API. This mirrors the multi-select pattern used by
+  // handleContextMenuDelete.
+  const handleCopyFile = useCallback(
+    (node: TreeNode) => {
+      const paths =
+        selectedPaths.has(node.path) && selectedPaths.size > 1
+          ? Array.from(selectedPaths)
+          : [node.path]
+      void (async () => {
+        const connectionId = activeRepo?.connectionId ?? null
+        // Why: always pass as object — the IPC normalizer expects
+        // { filePath: string | string[], connectionId?: string }.
+        const result = await window.api.ui.writeClipboardFile({ filePath: paths, connectionId })
+        if (!result.ok) {
+          toast.error(`Failed to copy ${paths.length} file(s): ${result.reason}`)
+        }
+      })()
+    },
+    [selectedPaths, activeRepo]
+  )
   const handleRowClick = useCallback(
     (node: TreeNode, event: React.MouseEvent<HTMLButtonElement>) =>
       selectRowWithModifiers(node, event, handleClick),
@@ -785,6 +807,7 @@ function FileExplorerFiles(): React.JSX.Element {
                 onStartRename={startRename}
                 onDuplicate={handleDuplicate}
                 onAddFolderAsProject={handleAddFolderAsProject}
+                onCopyFile={handleCopyFile}
                 canAddFolderAsProject={(node) => canShowAddAsProjectAction(node, activeRepo)}
                 onOpenInTerminal={handleOpenInTerminal}
                 onOpenSystemTerminal={handleOpenSystemTerminal}

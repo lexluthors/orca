@@ -40,7 +40,7 @@ import { isDashboardPopoutRenderer } from './dashboard-popout-window'
 let trustedClipboardRendererWebContentsId: number | null = null
 
 type ClipboardWriteFileRequest = {
-  filePath: string
+  filePath: string | readonly string[]
   connectionId?: string
 }
 
@@ -65,11 +65,30 @@ export function setTrustedClipboardRendererWebContentsId(webContentsId: number |
 function runCommand(command: string, args: string[], stdin?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ['pipe', 'ignore', 'ignore'] })
+    // Why: stdin can emit EPIPE when the child exits quickly (e.g. wl-copy on
+    // X11 with no Wayland server). Without an error handler on stdin, the EPIPE
+    // becomes an unhandled error that crashes the process and prevents the
+    // caller's fallback tool (e.g. xclip) from ever being attempted.
+    if (child.stdin) {
+      child.stdin.on('error', (error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EPIPE' && error.code !== 'ERR_STREAM_DESTROYED') {
+          reject(error)
+        }
+      })
+    }
     child.on('error', reject)
     child.on('exit', (code) =>
       code === 0 ? resolve() : reject(new Error(`${command} exited with ${code}`))
     )
-    child.stdin?.end(stdin ?? '')
+    try {
+      child.stdin?.end(stdin ?? '')
+    } catch (error) {
+      // Why: stdin.end() can throw synchronously (EPIPE) when the child exits
+      // before we write. The exit handler will reject with the real exit code.
+      if ((error as NodeJS.ErrnoException).code !== 'EPIPE') {
+        reject(error)
+      }
+    }
   })
 }
 
@@ -124,7 +143,9 @@ export function registerClipboardHandlers(store: Store): void {
     }
   )
   // Why: copy the actual file to the OS clipboard so pasting in Finder/Explorer
-  // drops the file itself, not its path as text.
+  // drops the file itself, not its path as text. Supports multi-select (array
+  // of paths) for local files; remote files are single-only since they require
+  // per-file download.
   ipcMain.handle(
     'clipboard:writeFile',
     (event, args: unknown): ClipboardFileResult | Promise<ClipboardFileResult> => {
@@ -146,8 +167,14 @@ export function registerClipboardHandlers(store: Store): void {
         }
       })
       if (request.connectionId) {
+        // Why: remote file copy downloads each file locally first, so multi-select
+        // remote copy is intentionally not supported — take the first path only.
+        const remotePath = Array.isArray(request.filePath) ? request.filePath[0] : request.filePath
+        if (!remotePath) {
+          return { ok: false, reason: 'invalid-path' }
+        }
         return writeRemoteFileToClipboard({
-          remotePath: request.filePath,
+          remotePath,
           connectionId: request.connectionId,
           deps
         })
@@ -212,14 +239,24 @@ function normalizeClipboardWriteFileRequest(args: unknown): ClipboardWriteFileRe
     return null
   }
   const filePath = (args as { filePath?: unknown }).filePath
-  if (typeof filePath !== 'string') {
-    return null
+  // Why: support both single-path (string) and multi-select (string[]) for
+  // file copy to clipboard. The renderer passes an array when Ctrl/Shift
+  // multi-selection is active.
+  if (typeof filePath === 'string') {
+    const connectionId = (args as { connectionId?: unknown }).connectionId
+    if (typeof connectionId === 'string' && connectionId.trim() !== '') {
+      return { filePath, connectionId }
+    }
+    return { filePath }
   }
-  const connectionId = (args as { connectionId?: unknown }).connectionId
-  if (typeof connectionId === 'string' && connectionId.trim() !== '') {
-    return { filePath, connectionId }
+  if (Array.isArray(filePath) && filePath.every((p) => typeof p === 'string')) {
+    const connectionId = (args as { connectionId?: unknown }).connectionId
+    if (typeof connectionId === 'string' && connectionId.trim() !== '') {
+      return { filePath, connectionId }
+    }
+    return { filePath }
   }
-  return { filePath }
+  return null
 }
 
 function makeClipboardFileDeps(
@@ -228,6 +265,7 @@ function makeClipboardFileDeps(
   return {
     platform: process.platform,
     desktop: process.env.XDG_CURRENT_DESKTOP,
+    sessionType: process.env.XDG_SESSION_TYPE,
     resolveFilePath,
     writeBuffer: (format, buffer) => clipboard.writeBuffer(format, buffer),
     runCommand

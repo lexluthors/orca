@@ -12,7 +12,6 @@ import {
   getNextNameFilterCollapsedPaths
 } from './file-explorer-name-filter-projection'
 import {
-  copyFileToOsClipboard,
   downloadRemoteFile,
   FileExplorerRow,
   shouldShowCollapseFolderAction,
@@ -612,12 +611,12 @@ describe('FileExplorerRow collapse folder action', () => {
     expect(shouldShowRemoteDownloadAction(fileNode, null, runtimeContext)).toBe(false)
   })
 
-  it('shows OS file copy for single local rows and SSH file rows on desktop', () => {
+  it('shows OS file copy for local rows and SSH file rows on desktop (including multi-select)', () => {
     const previous = (globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__
     try {
       expect(shouldShowCopyFileAction(fileNode, null, 1)).toBe(true)
       expect(shouldShowCopyFileAction(directoryNode, null, 1)).toBe(true)
-      expect(shouldShowCopyFileAction(fileNode, undefined, 2)).toBe(false)
+      expect(shouldShowCopyFileAction(fileNode, undefined, 2)).toBe(true) // multi-select now allowed
       expect(shouldShowCopyFileAction(fileNode, 'ssh-1', 1)).toBe(true)
       expect(shouldShowCopyFileAction(directoryNode, 'ssh-1', 1)).toBe(false)
 
@@ -627,51 +626,6 @@ describe('FileExplorerRow collapse folder action', () => {
     } finally {
       ;(globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ = previous
     }
-  })
-
-  it('copies local and SSH file rows through the clipboard file API', async () => {
-    const writeClipboardFile = vi.fn().mockResolvedValue({ ok: true })
-    ;(
-      globalThis as unknown as {
-        window: { api: { ui: { writeClipboardFile: typeof writeClipboardFile } } }
-      }
-    ).window = { api: { ui: { writeClipboardFile } } }
-
-    await copyFileToOsClipboard(fileNode)
-    await copyFileToOsClipboard(fileNode, 'ssh-1')
-
-    expect(writeClipboardFile).toHaveBeenNthCalledWith(1, '/repo/src/index.ts')
-    expect(writeClipboardFile).toHaveBeenNthCalledWith(2, {
-      filePath: '/repo/src/index.ts',
-      connectionId: 'ssh-1'
-    })
-    expect(toastErrorMock).not.toHaveBeenCalled()
-  })
-
-  it('shows a failure toast when OS file copy fails', async () => {
-    const writeClipboardFile = vi.fn().mockResolvedValue({ ok: false, reason: 'invalid-path' })
-    ;(
-      globalThis as unknown as {
-        window: { api: { ui: { writeClipboardFile: typeof writeClipboardFile } } }
-      }
-    ).window = { api: { ui: { writeClipboardFile } } }
-
-    await copyFileToOsClipboard(fileNode)
-
-    expect(toastErrorMock).toHaveBeenCalledWith('Could not copy the file to the clipboard')
-  })
-
-  it('shows the remote copy rejection message when SSH materialization fails', async () => {
-    const writeClipboardFile = vi.fn().mockRejectedValue(new Error('Remote connection dropped'))
-    ;(
-      globalThis as unknown as {
-        window: { api: { ui: { writeClipboardFile: typeof writeClipboardFile } } }
-      }
-    ).window = { api: { ui: { writeClipboardFile } } }
-
-    await copyFileToOsClipboard(fileNode, 'ssh-1')
-
-    expect(toastErrorMock).toHaveBeenCalledWith('Remote connection dropped')
   })
 
   it('calls the preload download API and shows success only when not canceled', async () => {
@@ -824,6 +778,7 @@ describe('FileExplorerRow collapse folder action', () => {
       onStartNew: vi.fn(),
       onStartRename: vi.fn(),
       onDuplicate: vi.fn(),
+      onCopyFile: vi.fn(),
       onAddFolderAsProject: vi.fn(),
       canAddFolderAsProject: () => false,
       onOpenInTerminal: vi.fn(),
@@ -879,6 +834,7 @@ describe('FileExplorerRow collapse folder action', () => {
       onStartNew: vi.fn(),
       onStartRename: vi.fn(),
       onDuplicate: vi.fn(),
+      onCopyFile: vi.fn(),
       onAddFolderAsProject: vi.fn(),
       canAddFolderAsProject: () => false,
       onOpenInTerminal: vi.fn(),
@@ -934,6 +890,7 @@ describe('FileExplorerRow collapse folder action', () => {
       onStartNew: vi.fn(),
       onStartRename: vi.fn(),
       onDuplicate: vi.fn(),
+      onCopyFile: vi.fn(),
       onAddFolderAsProject: vi.fn(),
       canAddFolderAsProject: () => false,
       onOpenInTerminal: vi.fn(),
@@ -988,6 +945,7 @@ describe('FileExplorerRow collapse folder action', () => {
       onStartNew: vi.fn(),
       onStartRename: vi.fn(),
       onDuplicate: vi.fn(),
+      onCopyFile: vi.fn(),
       onAddFolderAsProject: vi.fn(),
       canAddFolderAsProject: () => false,
       onOpenInTerminal,
@@ -1043,6 +1001,7 @@ describe('FileExplorerRow collapse folder action', () => {
       onStartNew: vi.fn(),
       onStartRename: vi.fn(),
       onDuplicate: vi.fn(),
+      onCopyFile: vi.fn(),
       onAddFolderAsProject: vi.fn(),
       canAddFolderAsProject: () => false,
       onOpenInTerminal: vi.fn(),

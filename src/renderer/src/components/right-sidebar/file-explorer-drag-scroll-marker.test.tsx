@@ -77,6 +77,7 @@ function virtualRowsElement(nodes: TreeNode[]): React.JSX.Element {
     onStartNew: vi.fn(),
     onStartRename: vi.fn(),
     onDuplicate: vi.fn(),
+    onCopyFile: vi.fn(),
     onAddFolderAsProject: vi.fn(),
     canAddFolderAsProject: () => false,
     onOpenInTerminal: vi.fn(),

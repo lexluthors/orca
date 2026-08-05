@@ -5,6 +5,7 @@ function makeDeps(overrides: Partial<ClipboardFileDeps> = {}): ClipboardFileDeps
   return {
     platform: 'darwin',
     desktop: undefined,
+    sessionType: undefined,
     resolveFilePath: async (path) => ({ ok: true, path }),
     writeBuffer: vi.fn(),
     runCommand: vi.fn(async () => {}),
@@ -100,11 +101,11 @@ describe('writeFileToClipboard', () => {
     ).toEqual({ ok: false, reason: 'clipboard-command-failed' })
   })
 
-  it('uses the KDE text/uri-list payload on a KDE desktop', async () => {
+  it('uses text/uri-list payload on a KDE desktop', async () => {
     const runCommand = vi.fn(async (_command: string, _args: string[], _stdin?: string) => {})
     const result = await writeFileToClipboard(
       '/repo/a b.png',
-      makeDeps({ platform: 'linux', desktop: 'KDE', runCommand })
+      makeDeps({ platform: 'linux', desktop: 'KDE', sessionType: 'wayland', runCommand })
     )
     expect(result).toEqual({ ok: true })
     const [command, args, stdin] = runCommand.mock.calls[0]
@@ -113,15 +114,15 @@ describe('writeFileToClipboard', () => {
     expect(stdin).toBe('file:///repo/a%20b.png\r\n')
   })
 
-  it('uses the GNOME copied-files payload on non-KDE desktops', async () => {
+  it('uses text/uri-list payload on GNOME desktops too', async () => {
     const runCommand = vi.fn(async (_command: string, _args: string[], _stdin?: string) => {})
     await writeFileToClipboard(
       '/repo/a.png',
-      makeDeps({ platform: 'linux', desktop: 'GNOME', runCommand })
+      makeDeps({ platform: 'linux', desktop: 'GNOME', sessionType: 'wayland', runCommand })
     )
     const [, args, stdin] = runCommand.mock.calls[0]
-    expect(args).toContain('x-special/gnome-copied-files')
-    expect(stdin).toBe('copy\nfile:///repo/a.png')
+    expect(args).toContain('text/uri-list')
+    expect(stdin).toBe('file:///repo/a.png\r\n')
   })
 
   it('tries each Linux tool and reports unsupported when all fail', async () => {
@@ -129,9 +130,12 @@ describe('writeFileToClipboard', () => {
       throw new Error('command not found')
     })
     expect(
-      await writeFileToClipboard('/repo/a.png', makeDeps({ platform: 'linux', runCommand }))
+      await writeFileToClipboard(
+        '/repo/a.png',
+        makeDeps({ platform: 'linux', sessionType: 'wayland', runCommand })
+      )
     ).toEqual({ ok: false, reason: 'unsupported-platform' })
-    expect(runCommand).toHaveBeenCalledTimes(2) // wl-copy, then xclip
+    expect(runCommand).toHaveBeenCalledTimes(2) // wl-copy, then xclip (Wayland order)
   })
 
   it('succeeds on Linux when a clipboard tool is available', async () => {
@@ -142,8 +146,29 @@ describe('writeFileToClipboard', () => {
       throw new Error('no xclip')
     })
     expect(
-      await writeFileToClipboard('/repo/a.png', makeDeps({ platform: 'linux', runCommand }))
+      await writeFileToClipboard(
+        '/repo/a.png',
+        makeDeps({ platform: 'linux', sessionType: 'wayland', runCommand })
+      )
     ).toEqual({ ok: true })
+    expect(runCommand.mock.calls[0][0]).toBe('wl-copy')
+  })
+
+  it('prefers xclip on X11 sessions', async () => {
+    const runCommand = vi.fn(async (_command: string, _args: string[]) => {})
+    await writeFileToClipboard(
+      '/repo/a.png',
+      makeDeps({ platform: 'linux', desktop: 'GNOME', sessionType: 'x11', runCommand })
+    )
+    expect(runCommand.mock.calls[0][0]).toBe('xclip')
+  })
+
+  it('prefers wl-copy on Wayland sessions', async () => {
+    const runCommand = vi.fn(async (_command: string, _args: string[]) => {})
+    await writeFileToClipboard(
+      '/repo/a.png',
+      makeDeps({ platform: 'linux', desktop: 'GNOME', sessionType: 'wayland', runCommand })
+    )
     expect(runCommand.mock.calls[0][0]).toBe('wl-copy')
   })
 })

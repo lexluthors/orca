@@ -3038,7 +3038,7 @@ export type PreloadApi = {
     writeClipboardFile: (
       args:
         | {
-            filePath: string
+            filePath: string | readonly string[]
             connectionId?: string | null
           }
         | string
