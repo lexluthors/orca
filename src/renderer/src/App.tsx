@@ -113,6 +113,7 @@ import {
   setRuntimeGraphSyncEnabled
 } from './runtime/sync-runtime-graph'
 import { useWebSessionTabsSync } from './runtime/web-session-tabs-sync'
+import { startTodoNotificationMonitor } from './components/work-panel/useTodoNotifications'
 import { useGlobalFileDrop } from './hooks/useGlobalFileDrop'
 import { MacosTccPromptNoticeHost } from './hooks/MacosTccPromptNoticeHost'
 import { useRadixBodyPointerEventsRecovery } from './hooks/useRadixBodyPointerEventsRecovery'
@@ -342,6 +343,7 @@ const SkillsPage = lazy(() => import('./components/skills/SkillsPage'))
 const ArtifactsPage = lazy(() => import('./components/artifacts/ArtifactsPage'))
 const WorkspaceSpacePage = lazy(() => import('./components/workspace-space/WorkspaceSpacePage'))
 const MobilePage = lazy(() => import('./components/mobile/MobilePage'))
+const WorkPage = lazy(() => import('./components/work-panel/WorkPage'))
 const QuickOpen = lazy(() => import('./components/QuickOpen'))
 const WorktreeJumpPalette = lazy(() => import('./components/WorktreeJumpPalette'))
 const WorkspaceCleanupDialog = lazy(
@@ -448,6 +450,7 @@ function App(): React.JSX.Element {
   const clearUnreadDockBadge = useUnreadDockBadge()
   useRadixBodyPointerEventsRecovery()
   useWebSessionTabsSync()
+  startTodoNotificationMonitor()
   // Why restored: leaving the panel closed forces the user to reopen and re-maximize it,
   // and that size jump reflows a live TUI's buffer (see floating-terminal-panel-view-state).
   const [floatingTerminalOpen, setFloatingTerminalOpen] = useState(
@@ -2411,6 +2414,7 @@ function App(): React.JSX.Element {
                               {activeView === 'activity' ? <ActivityPrototypePage /> : null}
                               {activeView === 'space' ? <WorkspaceSpacePage /> : null}
                               {activeView === 'mobile' ? <MobilePage /> : null}
+                              {activeView === 'work' ? <WorkPage /> : null}
                               {activeView === 'terminal' &&
                               creationLayoutActive &&
                               activePendingCreationId ? (

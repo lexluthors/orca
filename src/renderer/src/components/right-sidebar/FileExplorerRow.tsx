@@ -19,6 +19,7 @@ import {
   Link,
   Loader2,
   Pencil,
+  Play,
   Search,
   SquareTerminal,
   Trash2
@@ -281,7 +282,10 @@ type FileExplorerRowProps = {
   onDuplicate: (node: TreeNode) => void
   onAddFolderAsProject: () => void
   canAddAsProject: boolean
+  onCopyFile: () => void
   onOpenInTerminal: () => void
+  onOpenSystemTerminal: () => void
+  onExecute: () => void
   onRequestDelete: () => void
   onCollapseFolderSubtree: () => void
   onFindInFolder: () => void
@@ -309,6 +313,24 @@ export function shouldShowViewFileAction(node: TreeNode): boolean {
   return !node.isDirectory
 }
 
+const EXECUTABLE_FILE_EXTENSIONS = new Set(['.deb', '.appimage', '.apk', '.py', '.sh'])
+
+export function isExecutableFileType(node: TreeNode): boolean {
+  if (node.isDirectory) {
+    return false
+  }
+  const path = node.path.toLowerCase()
+  if (path.endsWith('.appimage')) {
+    return true
+  }
+  const dotIndex = path.lastIndexOf('.')
+  if (dotIndex === -1) {
+    return false
+  }
+  const ext = path.slice(dotIndex)
+  return EXECUTABLE_FILE_EXTENSIONS.has(ext)
+}
+
 export function shouldShowRemoteDownloadAction(
   node: TreeNode,
   connectionId?: string | null,
@@ -333,11 +355,10 @@ export function shouldShowCopyFileAction(
   connectionId?: string | null,
   selectionSize = 1
 ): boolean {
-  // Why: remote directories would require recursive materialization semantics;
-  // keep this to a single concrete file reference until multi-file copy exists.
+  // Why: allow multi-select copy for local files and single remote files.
   return (
     (!connectionId || !node.isDirectory) &&
-    selectionSize === 1 &&
+    selectionSize >= 1 &&
     (globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ !== true
   )
 }
@@ -417,30 +438,6 @@ export async function downloadRemoteFile(
   }
 }
 
-export async function copyFileToOsClipboard(
-  node: TreeNode,
-  connectionId?: string | null
-): Promise<void> {
-  const failureMessage = translate(
-    'auto.components.right.sidebar.FileExplorerRow.b234ab25b4',
-    'Could not copy the file to the clipboard'
-  )
-  const stagingFailureMessage = translate(
-    'auto.components.right.sidebar.FileExplorerRow.clipboardStagingUnavailable',
-    "Could not copy the file because Orca's temporary storage is unavailable"
-  )
-  try {
-    const result = await window.api.ui.writeClipboardFile(
-      connectionId ? { filePath: node.path, connectionId } : node.path
-    )
-    if (!result.ok) {
-      toast.error(result.reason === 'staging-unavailable' ? stagingFailureMessage : failureMessage)
-    }
-  } catch (error) {
-    toast.error(extractIpcErrorMessage(error, failureMessage))
-  }
-}
-
 export function FileExplorerRow({
   node,
   isExpanded,
@@ -469,7 +466,10 @@ export function FileExplorerRow({
   onDuplicate,
   onAddFolderAsProject,
   canAddAsProject,
+  onCopyFile,
   onOpenInTerminal,
+  onOpenSystemTerminal,
+  onExecute,
   onRequestDelete,
   onCollapseFolderSubtree,
   onFindInFolder,
@@ -522,9 +522,6 @@ export function FileExplorerRow({
     }
     void downloadRemoteFile(node, downloadTarget)
   }, [connectionId, node, runtimeDownloadContext])
-  const handleCopyFile = useCallback(() => {
-    void copyFileToOsClipboard(node, connectionId)
-  }, [connectionId, node])
 
   return (
     <ContextMenu
@@ -705,9 +702,15 @@ export function FileExplorerRow({
         </ContextMenuItem>
         <ContextMenuSeparator />
         {showCopyFileAction && (
-          <ContextMenuItem onSelect={handleCopyFile}>
+          <ContextMenuItem onSelect={onCopyFile}>
             <Copy />
-            {translate('auto.components.right.sidebar.FileExplorerRow.98a79948b3', 'Copy')}
+            {selectionSize > 1
+              ? translate(
+                  'auto.components.right.sidebar.FileExplorerRow.copyFiles',
+                  'Copy {{count}} Files',
+                  { count: selectionSize }
+                )
+              : translate('auto.components.right.sidebar.FileExplorerRow.98a79948b3', 'Copy')}
           </ContextMenuItem>
         )}
         <ContextMenuItem onSelect={() => onCopyPaths('absolute')}>
@@ -740,6 +743,19 @@ export function FileExplorerRow({
             {translate('auto.components.right.sidebar.FileExplorerRow.0fec99bfd7', 'Duplicate')}
           </ContextMenuItem>
         )}
+        {isExecutableFileType(node) && (
+          <ContextMenuItem onSelect={onExecute}>
+            <Play />
+            {translate('auto.components.right.sidebar.FileExplorerRow.execute', 'Execute')}
+          </ContextMenuItem>
+        )}
+        <ContextMenuItem onSelect={onOpenSystemTerminal}>
+          <SquareTerminal />
+          {translate(
+            'auto.components.right.sidebar.FileExplorerRow.openSystemTerminal',
+            'Open in System Terminal'
+          )}
+        </ContextMenuItem>
         {canAddAsProject && (
           <ContextMenuItem onSelect={onAddFolderAsProject}>
             <FolderPlus />

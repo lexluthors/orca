@@ -5419,6 +5419,9 @@
         },
         "WorktreeListScrollToTopButton": {
           "jumpToTop": "Jump to top"
+        },
+        "SidebarWorkNavButton": {
+          "work": "Work"
         }
       },
       "shared": {
@@ -10760,7 +10763,13 @@
             "79b1537dd3": "Select a workspace to browse files",
             "4da4d89845": "Back to Explorer",
             "6ed5ce817b": "Search",
-            "2f4483d6c4": "No files match this filter"
+            "2f4483d6c4": "No files match this filter",
+            "copyFailed": "Failed to copy {{count}} file(s): {{reason}}",
+            "executeFailed": "Failed to execute '{{name}}': {{reason}}",
+            "openSystemTerminalFailed": "Failed to open system terminal: {{reason}}",
+            "copyFiles": "Copy {{count}} Files",
+            "execute": "Execute",
+            "openSystemTerminal": "Open in System Terminal"
           },
           "FileExplorerBackgroundMenu": {
             "3b5e2dcb8d": "New Folder",
@@ -10797,7 +10806,10 @@
             "3161c4e425": "folder",
             "e887fa4b2e": "Open in Terminal",
             "1d8e182c32": "View File",
-            "clipboardStagingUnavailable": "Could not copy the file because Orca's temporary storage is unavailable"
+            "clipboardStagingUnavailable": "Could not copy the file because Orca's temporary storage is unavailable",
+            "copyFiles": "Copy {{count}} Files",
+            "execute": "Execute",
+            "openSystemTerminal": "Open in System Terminal"
           },
           "FileExplorerToolbar": {
             "d238264654": "Show Git Ignored Files",
@@ -15092,6 +15104,89 @@
           "openLink": "Open link",
           "updating": "Updating…",
           "update": "Update shared content"
+        }
+      },
+      "work-panel": {
+        "WorkPage": {
+          "emptySelection": "Select an item to edit"
+        },
+        "WorkListPanel": {
+          "filterAll": "All",
+          "filterActive": "Active",
+          "filterCompleted": "Completed",
+          "sortNewest": "Newest",
+          "sortOldest": "Oldest",
+          "sortPriority": "Priority",
+          "noItemsYet": "No items yet",
+          "clear": "Clear",
+          "minusTwoHours": "-2h",
+          "minusOneHour": "-1h",
+          "minusOneDay": "-1D",
+          "plusOneDay": "+1D",
+          "plusOneHour": "+1h",
+          "plusTwoHours": "+2h",
+          "priorityLabel": "Priority:",
+          "addItemPlaceholder": "Add a new item... (Enter for todo, Shift+Enter for memo)",
+          "addTodo": "Todo",
+          "addMemo": "Memo"
+        },
+        "TodoEditor": {
+          "done": "Done",
+          "deleteTodo": "Delete todo",
+          "todoTitlePlaceholder": "Todo title",
+          "addDetailsPlaceholder": "Add details... (optional)",
+          "priorityLabel": "Priority:",
+          "priorityHigh": "High",
+          "priorityMedium": "Medium",
+          "priorityLow": "Low",
+          "minusTwoHours": "-2h",
+          "minusOneHour": "-1h",
+          "minusOneDay": "-1D",
+          "plusOneDay": "+1D",
+          "plusOneHour": "+1h",
+          "plusTwoHours": "+2h",
+          "clear": "Clear",
+          "updated": "Updated"
+        },
+        "TodoEditDialog": {
+          "editTodoTitle": "Edit Todo",
+          "todoTitlePlaceholder": "Todo title",
+          "detailsPlaceholder": "Details (optional)",
+          "priorityLabel": "Priority:",
+          "priorityHigh": "High",
+          "priorityMedium": "Medium",
+          "priorityLow": "Low",
+          "due": "Due {{text}}",
+          "noDueDate": "No due date",
+          "minusTwoHours": "-2h",
+          "minusOneHour": "-1h",
+          "minusOneDay": "-1D",
+          "plusOneDay": "+1D",
+          "plusOneHour": "+1h",
+          "plusTwoHours": "+2h",
+          "clear": "Clear",
+          "cancel": "Cancel",
+          "save": "Save"
+        },
+        "MemoEditor": {
+          "unpin": "Unpin",
+          "pin": "Pin",
+          "color": "Color",
+          "edit": "Edit",
+          "preview": "Preview",
+          "deleteMemo": "Delete memo",
+          "memoTitlePlaceholder": "Memo title",
+          "noContent": "*No content*",
+          "memoBodyPlaceholder": "Write your memo here... (Markdown supported)",
+          "updated": "Updated"
+        },
+        "WorkItemRows": {
+          "due": "Due",
+          "sendToFeishu": "发送到飞书群",
+          "delete": "Delete",
+          "untitled": "Untitled",
+          "unpin": "Unpin",
+          "pin": "Pin"
         }
       }
     },

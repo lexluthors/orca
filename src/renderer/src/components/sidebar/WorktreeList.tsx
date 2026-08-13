@@ -8,7 +8,6 @@ import {
 import type { Range } from '@tanstack/react-virtual'
 import {
   AlertTriangle,
-  ChevronDown,
   CircleX,
   Ellipsis,
   Eye,
@@ -87,6 +86,7 @@ import {
   type WorktreeGroupBy,
   ALL_GROUP_KEY,
   PINNED_GROUP_KEY,
+  LINEAGE_GROUP_PREFIX,
   buildRows,
   getProjectGroupHeaderKey,
   getGroupKeysForWorktree,
@@ -424,13 +424,6 @@ function stopNestedWorktreeCardBubble(event: React.SyntheticEvent<HTMLElement>):
 }
 
 function handleRepoHeaderActionPointerDown(event: React.PointerEvent<HTMLElement>): void {
-  event.stopPropagation()
-}
-
-function handleRepoHeaderCollapseAffordancePointerDown(
-  event: React.PointerEvent<HTMLElement>
-): void {
-  // Why: keep collapse-chevron clicks from arming the repo-header row drag.
   event.stopPropagation()
 }
 
@@ -840,7 +833,6 @@ function HostSectionHeader({
         role="button"
         tabIndex={0}
         data-host-header-drag-id={row.hostId}
-        aria-expanded={!row.collapsed}
         className={cn(
           'group/host-header flex h-8 w-full cursor-pointer items-center gap-2 rounded-md border px-2 text-left transition-all',
           onDragPointerDown && 'cursor-grab active:cursor-grabbing',
@@ -887,11 +879,6 @@ function HostSectionHeader({
             </span>
           ) : null}
           <SectionMetricsBadge count={row.count} />
-        </div>
-        <div className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/60 can-hover:opacity-0 transition-opacity group-hover/host-header:opacity-100">
-          <ChevronDown
-            className={cn('size-3.5 transition-transform', row.collapsed && '-rotate-90')}
-          />
         </div>
         <span data-host-header-action="">
           <HostSectionHeaderMenu row={row} />
@@ -1401,7 +1388,10 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
   const [pendingRevealRetryTick, setPendingRevealRetryTick] = useState(0)
   const [documentVisibilityRevision, setDocumentVisibilityRevision] = useState(0)
   const [highlightedRevealRowKey, setHighlightedRevealRowKey] = useState<string | null>(null)
+  // Why: clicking a project header "selects" it (visual highlight only); cleared when another header is clicked.
+  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null)
   const setRenamingWorktreeId = useAppStore((s) => s.setRenamingWorktreeId)
+  const setActiveWorktree = useAppStore((s) => s.setActiveWorktree)
   const assignWorktreeParent = useAppStore((s) => s.assignWorktreeParent)
   const updateWorktreeLineage = useAppStore((s) => s.updateWorktreeLineage)
   const cyclicLineageIds = useMemo(
@@ -1709,6 +1699,53 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
     [computeWorktreeDropForGroup]
   )
   const renderRows = useMemo(() => buildRenderableRows(rows), [rows])
+  // Why: per-project card layout — each `header` row opens a card; the card closes
+  // at the next `header` / `host-header` boundary or the end of the list. This
+  // drives rounded corners + border placement on the virtual rows.
+  const projectCardLayoutByRowIndex = useMemo(() => {
+    const layout = new Map<number, { sectionKey: string; isFirst: boolean; isLast: boolean }>()
+    let currentSectionKey: string | null = null
+    let currentSectionStart = -1
+    const closeSection = (lastIndex: number) => {
+      if (currentSectionKey === null) {
+        return
+      }
+      const startEntry = layout.get(currentSectionStart)
+      if (startEntry) {
+        startEntry.isFirst = true
+      }
+      const endEntry = layout.get(lastIndex)
+      if (endEntry) {
+        endEntry.isLast = true
+      }
+    }
+    for (let index = 0; index < renderRows.length; index++) {
+      const row = renderRows[index]
+      if (!row) {
+        continue
+      }
+      if (row.type === 'header') {
+        if (currentSectionKey !== null) {
+          closeSection(index - 1)
+        }
+        currentSectionKey = row.key
+        currentSectionStart = index
+        layout.set(index, { sectionKey: row.key, isFirst: false, isLast: false })
+      } else if (row.type === 'host-header') {
+        if (currentSectionKey !== null) {
+          closeSection(index - 1)
+          currentSectionKey = null
+          currentSectionStart = -1
+        }
+      } else if (currentSectionKey !== null) {
+        layout.set(index, { sectionKey: currentSectionKey, isFirst: false, isLast: false })
+      }
+    }
+    if (currentSectionKey !== null) {
+      closeSection(renderRows.length - 1)
+    }
+    return layout
+  }, [renderRows])
   const sidebarRepoHeaderIdsByBucket = useMemo(
     () =>
       getSidebarOrderedRepoHeaderIdsByBucket(
@@ -4107,6 +4144,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
             if (!row) {
               return null
             }
+            const cardLayout = projectCardLayoutByRowIndex.get(vItem.index)
 
             if (row.type === 'host-header') {
               // Why: the host card is the outer tier; it pins above group headers (z-30 vs z-20) and stays put as they hand off.
@@ -4141,7 +4179,13 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                 >
                   <HostSectionHeader
                     row={row}
-                    onToggle={() => toggleGroupWithScrollAnchor(row.key)}
+                    onToggle={() => {
+                      // Why: collapse is disabled; clicking a host header just scrolls it to the top of the viewport.
+                      const rowIndex = renderRows.indexOf(row)
+                      if (rowIndex !== -1) {
+                        virtualizer.scrollToIndex(rowIndex, { align: 'start' })
+                      }
+                    }}
                     onDragPointerDown={
                       orderedHostIds.length > 1
                         ? (e) => hostDrag.onHandlePointerDown(e, row.hostId)
@@ -4242,14 +4286,6 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                 (isConfirmedStaleFolderPathStatus(projectGroupPathStatus) ||
                   projectGroupPathStatus.reason === 'ambiguous-connection')
               const projectGroupDepth = row.projectGroupDepth ?? 0
-              const isHeaderCollapsed = collapsedGroups.has(row.key)
-              // Why: repo/project/status/pinned share compact section chrome; flat "All" stays a simple label.
-              const showHeaderCollapseAffordance =
-                row.count > 0 &&
-                (isRepoHeader ||
-                  isProjectGroupHeader ||
-                  headerWorkspaceStatus !== null ||
-                  isPinnedHeader)
               // Why: non-project headers like "All" are flat-list labels; don't reserve project hierarchy indent.
               const headerPaddingLeft =
                 isRepoHeader || isProjectGroupHeader
@@ -4264,12 +4300,27 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   data-worktree-virtual-row-start={vItem.start}
                   data-worktree-sticky-header=""
                   data-worktree-sticky-header-active={isActiveStickyHeader ? '' : undefined}
+                  data-project-card-section={cardLayout?.sectionKey}
                   data-index={vItem.index}
                   ref={measureVirtualRowElement}
                   className={cn(
                     'left-0 right-0',
                     // Why: drop the inter-group spacer once the header pins so it sits flush at top (see getActiveStickyHeaderIndexForScroll).
                     hasHeaderTopSpacing && !isActiveStickyHeader && 'pt-1',
+                    // Why: per-project card geometry — top/bottom borders + rounded corners frame the project block.
+                    cardLayout?.isFirst &&
+                      cardLayout.isLast &&
+                      'mt-2 rounded-lg border border-worktree-sidebar-border bg-worktree-sidebar-accent/20',
+                    cardLayout?.isFirst &&
+                      !cardLayout.isLast &&
+                      'mt-2 rounded-t-lg border-x border-t border-worktree-sidebar-border bg-worktree-sidebar-accent/20',
+                    cardLayout?.isLast &&
+                      !cardLayout.isFirst &&
+                      'rounded-b-lg border-x border-b border-worktree-sidebar-border bg-worktree-sidebar-accent/20',
+                    cardLayout &&
+                      !cardLayout.isFirst &&
+                      !cardLayout.isLast &&
+                      'border-x border-worktree-sidebar-border bg-worktree-sidebar-accent/20',
                     isActiveStickyHeader
                       ? cn('sticky z-20 bg-worktree-sidebar', stickyTopClass)
                       : 'absolute top-0'
@@ -4284,7 +4335,6 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                     id={getWorktreeOptionId(row.key)}
                     role="button"
                     tabIndex={0}
-                    aria-expanded={showHeaderCollapseAffordance ? !isHeaderCollapsed : undefined}
                     data-repo-header-id={projectIdForHeader}
                     data-repo-header-index={repoHeaderIndex}
                     data-repo-header-bucket={repoHeaderBucketKey}
@@ -4315,6 +4365,9 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                       // actions use cursor-pointer so … / + never look reorderable.
                       'group relative flex h-7 w-full items-center gap-1.5 pr-2 text-left transition-all',
                       !(isDraggableRepoHeader || isDraggableProjectGroupHeader) && 'cursor-pointer',
+                      // Why: selected project header gets a subtle highlight to indicate the "selected" state.
+                      selectedProjectKey === row.key &&
+                        'bg-worktree-sidebar-accent/70 text-foreground',
                       highlightedRevealRowKey === row.key &&
                         'rounded-md bg-worktree-sidebar-accent ring-1 ring-worktree-sidebar-ring/50',
                       (isDraggingThis || isDraggingThisProjectGroup) &&
@@ -4359,7 +4412,22 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                       if (shouldIgnoreRepoHeaderToggle(event)) {
                         return
                       }
-                      toggleGroupWithScrollAnchor(row.key)
+                      // Why: clicking a project header "selects" it visually and ensures a worktree
+                      // from this project is active in the center content area.
+                      setSelectedProjectKey((prev) => (prev === row.key ? null : row.key))
+                      const projectWorktreeIds = row.worktreeIds
+                      if (projectWorktreeIds && projectWorktreeIds.length > 0) {
+                        const currentActiveIsInProject =
+                          activeWorktreeId != null && projectWorktreeIds.includes(activeWorktreeId)
+                        if (!currentActiveIsInProject) {
+                          // Activate the first worktree of this project so the center
+                          // content area positions to this project's editing surface.
+                          const firstWorktreeId = projectWorktreeIds[0]
+                          if (firstWorktreeId) {
+                            setActiveWorktree(firstWorktreeId)
+                          }
+                        }
+                      }
                     }}
                     onKeyDown={(e) => {
                       if (shouldIgnoreRepoHeaderToggle(e)) {
@@ -4367,7 +4435,19 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                       }
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault()
-                        toggleGroupWithScrollAnchor(row.key)
+                        setSelectedProjectKey((prev) => (prev === row.key ? null : row.key))
+                        const projectWorktreeIds = row.worktreeIds
+                        if (projectWorktreeIds && projectWorktreeIds.length > 0) {
+                          const currentActiveIsInProject =
+                            activeWorktreeId != null &&
+                            projectWorktreeIds.includes(activeWorktreeId)
+                          if (!currentActiveIsInProject) {
+                            const firstWorktreeId = projectWorktreeIds[0]
+                            if (firstWorktreeId) {
+                              setActiveWorktree(firstWorktreeId)
+                            }
+                          }
+                        }
                       }
                     }}
                   >
@@ -4417,27 +4497,6 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                     </div>
 
                     <ProjectHeaderActions>
-                      {showHeaderCollapseAffordance ? (
-                        <div
-                          className="flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
-                          data-repo-header-collapse-affordance=""
-                          aria-hidden
-                          onPointerDown={handleRepoHeaderCollapseAffordancePointerDown}
-                          onClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            toggleGroupWithScrollAnchor(row.key)
-                          }}
-                        >
-                          <ChevronDown
-                            className={cn(
-                              'size-3.5 transition-transform',
-                              isHeaderCollapsed && '-rotate-90'
-                            )}
-                          />
-                        </div>
-                      ) : null}
-
                       {isProjectGroupHeader && !row.repo && row.projectGroup?.id ? (
                         <DropdownMenu modal={false}>
                           <DropdownMenuTrigger asChild>
@@ -5020,7 +5079,17 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   data-worktree-virtual-row-start={vItem.start}
                   data-index={vItem.index}
                   ref={measureVirtualRowElement}
-                  className="absolute left-0 right-0 top-0"
+                  data-project-card-section={cardLayout?.sectionKey}
+                  className={cn(
+                    'absolute left-0 right-0 top-0',
+                    cardLayout?.isLast &&
+                      !cardLayout.isFirst &&
+                      'rounded-b-lg border-x border-b border-worktree-sidebar-border bg-worktree-sidebar-accent/20',
+                    cardLayout &&
+                      !cardLayout.isFirst &&
+                      !cardLayout.isLast &&
+                      'border-x border-worktree-sidebar-border bg-worktree-sidebar-accent/20'
+                  )}
                   style={{ transform: getVirtualRowTransform(vItem.start) }}
                 >
                   <ImportedWorktreesVisibilityLine
@@ -5051,7 +5120,17 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   data-worktree-virtual-row-start={vItem.start}
                   data-index={vItem.index}
                   ref={measureVirtualRowElement}
-                  className="absolute left-0 right-0 top-0"
+                  data-project-card-section={cardLayout?.sectionKey}
+                  className={cn(
+                    'absolute left-0 right-0 top-0',
+                    cardLayout?.isLast &&
+                      !cardLayout.isFirst &&
+                      'rounded-b-lg border-x border-b border-worktree-sidebar-border bg-worktree-sidebar-accent/20',
+                    cardLayout &&
+                      !cardLayout.isFirst &&
+                      !cardLayout.isLast &&
+                      'border-x border-worktree-sidebar-border bg-worktree-sidebar-accent/20'
+                  )}
                   style={{ transform: getVirtualRowTransform(vItem.start) }}
                 >
                   <NewExternalWorktreesInboxLine
@@ -5080,10 +5159,22 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   data-worktree-virtual-row-start={vItem.start}
                   data-index={vItem.index}
                   ref={measureVirtualRowElement}
-                  className="absolute left-0 right-0 top-0 px-2 pb-1.5"
+                  data-project-card-section={cardLayout?.sectionKey}
+                  className={cn(
+                    'absolute left-0 right-0 top-0',
+                    cardLayout?.isLast &&
+                      !cardLayout.isFirst &&
+                      'rounded-b-lg border-x border-b border-worktree-sidebar-border bg-worktree-sidebar-accent/20',
+                    cardLayout &&
+                      !cardLayout.isFirst &&
+                      !cardLayout.isLast &&
+                      'border-x border-worktree-sidebar-border bg-worktree-sidebar-accent/20'
+                  )}
                   style={{ transform: getVirtualRowTransform(vItem.start) }}
                 >
-                  <PendingWorktreeRow creationId={row.creationId} />
+                  <div className="px-2 pb-1.5">
+                    <PendingWorktreeRow creationId={row.creationId} />
+                  </div>
                 </div>
               )
             }
@@ -5132,7 +5223,17 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   data-worktree-virtual-row-start={vItem.start}
                   data-index={vItem.index}
                   ref={measureVirtualRowElement}
-                  className="absolute left-0 right-0 top-0"
+                  data-project-card-section={cardLayout?.sectionKey}
+                  className={cn(
+                    'absolute left-0 right-0 top-0',
+                    cardLayout?.isLast &&
+                      !cardLayout.isFirst &&
+                      'rounded-b-lg border-x border-b border-worktree-sidebar-border bg-worktree-sidebar-accent/20',
+                    cardLayout &&
+                      !cardLayout.isFirst &&
+                      !cardLayout.isLast &&
+                      'border-x border-worktree-sidebar-border bg-worktree-sidebar-accent/20'
+                  )}
                   style={{ transform: getVirtualRowTransform(vItem.start) }}
                   onClickCapture={handleWorktreeRowClickCapture}
                   onPointerDown={(event) =>
@@ -5185,10 +5286,19 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                 data-worktree-virtual-row-start={vItem.start}
                 data-index={vItem.index}
                 ref={measureVirtualRowElement}
+                data-project-card-section={cardLayout?.sectionKey}
                 data-workspace-status-drop-target={itemWorkspaceStatus ? '' : undefined}
                 data-workspace-status={itemWorkspaceStatus ?? undefined}
                 className={cn(
                   'absolute left-0 right-0 top-0',
+                  // Why: per-project card geometry — middle/last rows continue the card frame started at the header.
+                  cardLayout?.isLast &&
+                    !cardLayout.isFirst &&
+                    'rounded-b-lg border-x border-b border-worktree-sidebar-border bg-worktree-sidebar-accent/20',
+                  cardLayout &&
+                    !cardLayout.isFirst &&
+                    !cardLayout.isLast &&
+                    'border-x border-worktree-sidebar-border bg-worktree-sidebar-accent/20',
                   worktreeDragState.draggingWorktreeId !== null &&
                     'transition-transform duration-150 ease-out will-change-transform'
                 )}
@@ -5625,31 +5735,21 @@ const WorktreeList = React.memo(function WorktreeList({
   const projectGroups = useAppStore((s) => s.projectGroups ?? EMPTY_PROJECT_GROUPS)
   const folderWorkspaces = useAppStore((s) => s.folderWorkspaces)
   const effectiveCollapsedGroups = useMemo(() => {
+    // Why: group-level collapse (repo/host/project-group headers) is disabled; only lineage collapse on worktree cards is preserved.
+    const lineageOnly = new Set<string>()
+    for (const key of collapsedGroups) {
+      if (key.startsWith(LINEAGE_GROUP_PREFIX)) {
+        lineageOnly.add(key)
+      }
+    }
     if (!agentSendTargetWorktreeId) {
-      return collapsedGroups
+      return lineageOnly
     }
     const targetWorktree = worktreeMap.get(agentSendTargetWorktreeId)
     if (!targetWorktree) {
-      return collapsedGroups
+      return lineageOnly
     }
-    const next = new Set(collapsedGroups)
-    if (targetWorktree.isPinned) {
-      next.delete(PINNED_GROUP_KEY)
-    } else {
-      for (const groupKey of getGroupKeysForWorktree(
-        groupBy,
-        targetWorktree,
-        repoMap,
-        prCache,
-        workspaceStatuses,
-        settings,
-        projectGroups,
-        projectGrouping
-      )) {
-        next.delete(groupKey)
-      }
-    }
-
+    const next = new Set(lineageOnly)
     for (const parent of getWorktreeLineageAncestors(
       targetWorktree,
       worktreeLineageById,
@@ -5658,19 +5758,7 @@ const WorktreeList = React.memo(function WorktreeList({
       next.delete(getLineageGroupKey(parent.id))
     }
     return next
-  }, [
-    agentSendTargetWorktreeId,
-    collapsedGroups,
-    groupBy,
-    prCache,
-    projectGroups,
-    projectGrouping,
-    repoMap,
-    settings,
-    workspaceStatuses,
-    worktreeLineageById,
-    worktreeMap
-  ])
+  }, [agentSendTargetWorktreeId, collapsedGroups, worktreeLineageById, worktreeMap])
   const defaultHostId = getSettingsFocusedExecutionHostId(settings)
   const visibleHostIdSet = useMemo(
     () => getVisibleSidebarHostIdSet(visibleWorkspaceHostIds, workspaceHostScope),

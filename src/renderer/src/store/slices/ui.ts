@@ -619,6 +619,7 @@ export type UISlice = {
     | 'skills'
     | 'artifacts'
     | 'mobile'
+    | 'work'
   previousViewBeforeSettings:
     | 'terminal'
     | 'tasks'
@@ -628,6 +629,7 @@ export type UISlice = {
     | 'skills'
     | 'artifacts'
     | 'mobile'
+    | 'work'
   previousViewBeforeActivity:
     | 'terminal'
     | 'settings'
@@ -637,6 +639,7 @@ export type UISlice = {
     | 'skills'
     | 'artifacts'
     | 'mobile'
+    | 'work'
   previousViewBeforeAutomations:
     | 'terminal'
     | 'settings'
@@ -646,6 +649,7 @@ export type UISlice = {
     | 'skills'
     | 'artifacts'
     | 'mobile'
+    | 'work'
   previousViewBeforeSpace:
     | 'terminal'
     | 'settings'
@@ -655,6 +659,7 @@ export type UISlice = {
     | 'skills'
     | 'artifacts'
     | 'mobile'
+    | 'work'
   previousViewBeforeSkills:
     | 'terminal'
     | 'settings'
@@ -664,6 +669,7 @@ export type UISlice = {
     | 'space'
     | 'artifacts'
     | 'mobile'
+    | 'work'
   previousViewBeforeMobile:
     | 'terminal'
     | 'settings'
@@ -673,6 +679,7 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'artifacts'
+    | 'work'
   previousViewBeforeArtifacts:
     | 'terminal'
     | 'settings'
@@ -682,6 +689,18 @@ export type UISlice = {
     | 'space'
     | 'skills'
     | 'mobile'
+    | 'work'
+  previousViewBeforeWork:
+    | 'terminal'
+    | 'settings'
+    | 'tasks'
+    | 'activity'
+    | 'automations'
+    | 'space'
+    | 'skills'
+    | 'artifacts'
+    | 'mobile'
+    | 'work'
   setActiveView: (view: UISlice['activeView']) => void
   taskPageData: {
     preselectedRepoId?: string
@@ -764,6 +783,8 @@ export type UISlice = {
   closeSkillsPage: () => void
   openArtifactsPage: () => void
   closeArtifactsPage: () => void
+  openWorkPage: () => void
+  closeWorkPage: () => void
   openMobilePage: () => void
   closeMobilePage: () => void
   setNewWorkspaceDraft: (draft: NonNullable<UISlice['newWorkspaceDraft']>) => void
@@ -1260,6 +1281,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   previousViewBeforeSkills: 'terminal',
   previousViewBeforeMobile: 'terminal',
   previousViewBeforeArtifacts: 'terminal',
+  previousViewBeforeWork: 'terminal',
   setActiveView: (view) => set({ activeView: view }),
   taskPageData: {},
   taskResumeState: undefined,
@@ -1516,6 +1538,16 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   closeArtifactsPage: () =>
     set((state) => ({
       activeView: state.previousViewBeforeArtifacts
+    })),
+  openWorkPage: () =>
+    set((state) => ({
+      activeView: 'work',
+      previousViewBeforeWork:
+        state.activeView === 'work' ? state.previousViewBeforeWork : state.activeView
+    })),
+  closeWorkPage: () =>
+    set((state) => ({
+      activeView: state.previousViewBeforeWork
     })),
   openMobilePage: () =>
     set((state) => ({

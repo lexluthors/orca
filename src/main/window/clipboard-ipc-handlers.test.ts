@@ -36,7 +36,7 @@ const {
   childStdinEndMock: vi.fn(),
   spawnMock: vi.fn(() => {
     const child = {
-      stdin: { end: childStdinEndMock },
+      stdin: { end: childStdinEndMock, on: vi.fn(() => ({})) },
       on: vi.fn((event: string, callback: (code?: number) => void) => {
         if (event === 'exit') {
           queueMicrotask(() => callback(0))

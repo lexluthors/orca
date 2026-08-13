@@ -35,14 +35,14 @@ describe('project group header action targets', () => {
     expect(isProjectGroupHeaderActionTarget(header.querySelector('#icon'), header)).toBe(true)
   })
 
-  it('ignores the hover collapse affordance', () => {
+  it('ignores elements nested within action-marked ancestors', () => {
     const header = createHeader(`
-      <div data-repo-header-collapse-affordance="">
-        <span id="chevron"></span>
+      <div data-repo-header-action="">
+        <span id="icon"></span>
       </div>
     `)
 
-    expect(isProjectGroupHeaderActionTarget(header.querySelector('#chevron'), header)).toBe(true)
+    expect(isProjectGroupHeaderActionTarget(header.querySelector('#icon'), header)).toBe(true)
   })
 
   it('does not ignore plain header text or the header itself', () => {

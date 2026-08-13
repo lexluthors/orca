@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- Why: FileExplorer coordinates tree data, selection, drag/drop, and virtual rows; splitting it during this merge would obscure the interaction invariants. */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { useActiveWorktree, useRepoById } from '@/store/selectors'
 import { basename, dirname } from '@/lib/path'
@@ -568,6 +569,35 @@ function FileExplorerFiles(): React.JSX.Element {
   )
 
   const handleDuplicate = useFileDuplicate({ activeWorktreeId, worktreePath, refreshDir })
+  // Why: multi-select file copy — collects all selected paths (or just the
+  // clicked node if not part of a selection) and passes them as an array to
+  // the OS clipboard API. This mirrors the multi-select pattern used by
+  // handleContextMenuDelete.
+  const handleCopyFile = useCallback(
+    (node: TreeNode) => {
+      const paths =
+        selectedPaths.has(node.path) && selectedPaths.size > 1
+          ? Array.from(selectedPaths)
+          : [node.path]
+      void (async () => {
+        const connectionId = activeRepo?.connectionId ?? null
+        // Why: always pass as object — the IPC normalizer expects
+        // { filePath: string | string[], connectionId?: string }.
+        const result = await window.api.ui.writeClipboardFile({ filePath: paths, connectionId })
+        if (!result.ok) {
+          toast.error(
+            translate(
+              'auto.components.right.sidebar.FileExplorer.copyFailed',
+              'Failed to copy {{count}} file(s): {{reason}}'
+            )
+              .replace('{{count}}', String(paths.length))
+              .replace('{{reason}}', result.reason ?? '')
+          )
+        }
+      })()
+    },
+    [selectedPaths, activeRepo]
+  )
   const handleRowClick = useCallback(
     (node: TreeNode, event: React.MouseEvent<HTMLButtonElement>) => {
       const dirToggle = resolveDirToggleTiming({
@@ -620,6 +650,37 @@ function FileExplorerFiles(): React.JSX.Element {
     },
     [activeWorktreeId]
   )
+  const handleExecute = useCallback((node: TreeNode) => {
+    void (async () => {
+      const result = await window.api.shell.executeFile(node.path)
+      if (!result.ok) {
+        toast.error(
+          translate(
+            'auto.components.right.sidebar.FileExplorer.executeFailed',
+            "Failed to execute '{{name}}': {{reason}}"
+          )
+            .replace('{{name}}', node.name)
+            .replace('{{reason}}', result.reason ?? '')
+        )
+      }
+    })()
+  }, [])
+  const handleOpenSystemTerminal = useCallback((node: TreeNode) => {
+    void (async () => {
+      const result = await window.api.shell.openSystemTerminal({
+        path: node.path,
+        isDirectory: node.isDirectory
+      })
+      if (!result.ok) {
+        toast.error(
+          translate(
+            'auto.components.right.sidebar.FileExplorer.openSystemTerminalFailed',
+            'Failed to open system terminal: {{reason}}'
+          ).replace('{{reason}}', result.reason ?? '')
+        )
+      }
+    })()
+  }, [])
 
   if (!worktreePath) {
     return (
@@ -787,8 +848,11 @@ function FileExplorerFiles(): React.JSX.Element {
                 onStartRename={handleStartRename}
                 onDuplicate={handleDuplicate}
                 onAddFolderAsProject={handleAddFolderAsProject}
+                onCopyFile={handleCopyFile}
                 canAddFolderAsProject={(node) => canShowAddAsProjectAction(node, activeRepo)}
                 onOpenInTerminal={handleOpenInTerminal}
+                onOpenSystemTerminal={handleOpenSystemTerminal}
+                onExecute={handleExecute}
                 onRequestDelete={handleContextMenuDelete}
                 onCollapseFolderSubtree={handleCollapseFolderSubtree}
                 onFindInFolder={handleFindInFolder}

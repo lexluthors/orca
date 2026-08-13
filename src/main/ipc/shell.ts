@@ -9,6 +9,7 @@ import type {
 } from '../../shared/shell-open-types'
 import { MAX_REPO_ICON_UPLOAD_BYTES } from '../../shared/repo-icon'
 import type { Store } from '../persistence'
+import { registerShellSystemTerminalHandlers } from './shell-system-terminal'
 import {
   EXTERNAL_EDITOR_CLI_COMMAND,
   launchExternalEditor,
@@ -311,4 +312,6 @@ export function registerShellHandlers(store: Store): void {
       await copyFile(src, dest, constants.COPYFILE_EXCL)
     }
   )
+
+  registerShellSystemTerminalHandlers(validateLocalPathTarget)
 }
